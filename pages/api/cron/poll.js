@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { rows: curators } = await sql`
+  try { const { rows: curators } = await sql`
     SELECT id, spotify_playlist_id FROM curators WHERE status = 'approved'
   `;
 
@@ -74,4 +74,5 @@ export default async function handler(req, res) {
   await recomputeAllScores();
 
   return res.status(200).json({ ok: true, totalAdds, curators: curators.length });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
 }
