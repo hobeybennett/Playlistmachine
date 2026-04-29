@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Head from "next/head";
 
-// ─── helpers ────────────────────────────────────────────────────────────────
-
 const extractId = (input) => {
   const match = input.match(/playlist\/([a-zA-Z0-9]+)/);
   return match ? match[1] : input.trim();
@@ -29,7 +27,7 @@ const mockTimeline = () => {
 };
 
 const enrichTracks = (rawTracks) => {
-  const enriched = rawTracks.map((t, i) => ({
+  const enriched = rawTracks.map((t) => ({
     ...t,
     weightedScore: Math.floor(30 + Math.random() * 270),
     momentum: Math.floor(15 + Math.random() * 85),
@@ -40,8 +38,6 @@ const enrichTracks = (rawTracks) => {
   enriched.forEach((t, i) => (t.rank = i + 1));
   return enriched;
 };
-
-// ─── sub-components ──────────────────────────────────────────────────────────
 
 function MiniBar({ data, hot }) {
   const max = Math.max(...data, 1);
@@ -216,8 +212,6 @@ function TrackRow({ track, index, selected, onClick }) {
   );
 }
 
-// ─── main page ───────────────────────────────────────────────────────────────
-
 export default function Home() {
   const [inputUrl, setInputUrl] = useState("https://open.spotify.com/playlist/00hfL65TE5CkQEdxJAFMdo");
   const [playlist, setPlaylist] = useState(null);
@@ -232,23 +226,18 @@ export default function Home() {
   const loadPlaylist = useCallback(async (url) => {
     const id = extractId(url);
     if (!id) return;
-
     setLoading(true);
     setError(null);
     setSelectedTrack(null);
-
     try {
       const res = await fetch(`/api/playlist?playlistId=${id}`);
       const data = await res.json();
-
       if (!res.ok) throw new Error(data.error || "Failed to load playlist");
-
       setPlaylist(data.playlist);
       setTracks(enrichTracks(data.tracks));
     } catch (e) {
       setError(e.message);
     }
-
     setLoading(false);
   }, []);
 
@@ -269,14 +258,12 @@ export default function Home() {
       </Head>
 
       <div style={{ minHeight: "100vh", position: "relative" }}>
-        {/* Grid bg */}
         <div style={{
           position: "fixed", inset: 0, pointerEvents: "none", zIndex: 0,
           backgroundImage: "linear-gradient(rgba(184,240,80,0.018) 1px, transparent 1px), linear-gradient(90deg, rgba(184,240,80,0.018) 1px, transparent 1px)",
           backgroundSize: "48px 48px",
         }} />
 
-        {/* NAV */}
         <nav style={{
           position: "sticky", top: 0, zIndex: 100,
           background: "rgba(9,9,11,0.97)",
@@ -357,7 +344,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* LOADING */}
         {loading && (
           <div style={{ position: "relative", zIndex: 1, padding: "80px 24px", textAlign: "center" }}>
             <div style={{ fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 24 }}>
@@ -376,11 +362,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* MAIN CONTENT */}
         {!loading && playlist && tracks.length > 0 && (
           <div style={{ position: "relative", zIndex: 1, animation: "fadeIn 0.4s both" }}>
-
-            {/* Playlist header */}
             <div style={{
               borderBottom: "1px solid var(--border)",
               padding: "28px 24px",
@@ -437,10 +420,7 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Body grid */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 280px" }}>
-
-              {/* Track list */}
               <div style={{ borderRight: "1px solid var(--border)" }}>
                 <div style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -480,7 +460,6 @@ export default function Home() {
                 ))}
               </div>
 
-              {/* Sidebar */}
               <div style={{ background: "var(--surface)", position: "sticky", top: 54, alignSelf: "start", maxHeight: "calc(100vh - 54px)", overflowY: "auto" }}>
                 <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--border)" }}>
                   <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)" }}>
@@ -534,7 +513,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Empty state */}
         {!loading && !playlist && !error && (
           <div style={{ position: "relative", zIndex: 1, padding: "100px 24px", textAlign: "center" }}>
             <div style={{ fontFamily: "Georgia, serif", fontSize: 36, color: "var(--surface2)", marginBottom: 12 }}>
