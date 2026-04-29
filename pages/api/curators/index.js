@@ -3,7 +3,7 @@ import { fetchPlaylist } from "../../../lib/spotify.js";
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    const { rows } = await sql`
+    try { const { rows } = await sql`
       SELECT
         id, name, owner_name, follower_count, score,
         hit_accuracy, lead_time_score, call_volume,
@@ -15,6 +15,7 @@ export default async function handler(req, res) {
     `;
     res.setHeader("Cache-Control", "s-maxage=120, stale-while-revalidate");
     return res.status(200).json({ curators: rows });
+    } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 
   if (req.method === "POST") {
@@ -62,7 +63,7 @@ export default async function handler(req, res) {
       RETURNING id, status, name
     `;
 
-    return res.status(201).json({
+    try { return res.status(201).json({
       id: curator.id,
       status: curator.status,
       name: curator.name,
@@ -71,7 +72,7 @@ export default async function handler(req, res) {
         status === "approved"
           ? "Approved — your playlist will be tracked from the next poll cycle."
           : "Submitted for review — playlists with fewer than 100 followers are reviewed manually.",
-    });
+    }); } catch (err) { return res.status(500).json({ error: err.message }); }
   }
 
   return res.status(405).json({ error: "Method not allowed" });

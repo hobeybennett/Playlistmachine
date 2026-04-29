@@ -6,7 +6,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid track ID" });
   }
 
-  const [addsRes, velocityRes] = await Promise.all([
+  try { const [addsRes, velocityRes] = await Promise.all([
     sql`
       SELECT
         ta.spotify_track_id,
@@ -73,4 +73,7 @@ export default async function handler(req, res) {
     weightedScore: Math.round(weightedScore),
     addCount: addsRes.rows.length,
   });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 }

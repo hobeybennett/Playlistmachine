@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   const hours = WINDOW_HOURS[window] || 72;
   const since = new Date(Date.now() - hours * 3600 * 1000).toISOString();
 
-  const { rows } = await sql`
+  try { const { rows } = await sql`
     SELECT
       ta.spotify_track_id,
       ta.track_name,
@@ -33,4 +33,7 @@ export default async function handler(req, res) {
 
   res.setHeader("Cache-Control", "s-maxage=60, stale-while-revalidate");
   return res.status(200).json({ tracks: rows, window });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 }
