@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "spotify": {
+      "type": "url",
+      "url": "https://mcp.spotify.com/sse"
+    },
+    "vercel": {
+      "type": "url",
+      "url": "https://mcp.vercel.com/sse"
+    }
+  }
+}
