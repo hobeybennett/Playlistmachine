@@ -6,7 +6,7 @@ export default async function handler(req, res) {
     try { const { rows } = await sql`
       SELECT
         id, name, owner_name, follower_count, score,
-        hit_accuracy, lead_time_score, call_volume,
+        avg_popularity, predictive_lift, call_volume,
         spotify_playlist_id, approved_at
       FROM curators
       WHERE status = 'approved'

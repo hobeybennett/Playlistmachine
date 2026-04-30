@@ -34,9 +34,9 @@ function CuratorCard({ curator, rank }) {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginBottom: 14 }}>
         {[
-          ["Hit Accuracy", `${Math.round(curator.hit_accuracy)}%`, "Adds that hit 1M+ streams"],
-          ["Lead Time", Math.round(curator.lead_time_score), "How early vs others"],
-          ["Call Volume", curator.call_volume, "Total tracks scored"],
+          ["Avg Popularity", Math.round(curator.avg_popularity ?? 0), "Current avg across all tracks"],
+          ["Predictive Lift", `+${Math.round(curator.predictive_lift ?? 0)}`, "Avg popularity gain on 30d+ tracks"],
+          ["Track Count", curator.call_volume, "Total tracks tracked"],
         ].map(([label, val, desc]) => (
           <div key={label}>
             <div style={{ fontSize: 9, color: "var(--faint)", marginBottom: 3 }}>{label}</div>
