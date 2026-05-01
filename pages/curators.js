@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect } from "react"; // eslint-disable-line no-unused-vars
 import Head from "next/head";
 import Link from "next/link";
 
@@ -60,9 +60,6 @@ function CuratorCard({ curator, rank }) {
 export default function Curators() {
   const [curators, setCurators] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [submitUrl, setSubmitUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [submitResult, setSubmitResult] = useState(null);
 
   useEffect(() => {
     fetch("/api/curators")
@@ -70,27 +67,6 @@ export default function Curators() {
       .then((d) => { setCurators(d.curators || []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!submitUrl.trim()) return;
-    setSubmitting(true);
-    setSubmitResult(null);
-
-    try {
-      const res = await fetch("/api/curators", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ playlistUrl: submitUrl }),
-      });
-      const data = await res.json();
-      setSubmitResult({ ok: res.ok, message: data.message || data.error, status: data.status });
-      if (res.ok) setSubmitUrl("");
-    } catch {
-      setSubmitResult({ ok: false, message: "Network error — please try again" });
-    }
-    setSubmitting(false);
-  };
 
   return (
     <>
@@ -127,73 +103,6 @@ export default function Curators() {
         </nav>
 
         <div style={{ position: "relative", zIndex: 1, maxWidth: 900, margin: "0 auto", padding: "40px 24px" }}>
-          {/* Submit form */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 28, marginBottom: 40 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>
-              // Submit a Curator
-            </div>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>
-              Add your playlist
-            </h2>
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 20, lineHeight: 1.7 }}>
-              Paste a public Spotify playlist URL. Playlists with 100+ followers are approved automatically. Others are reviewed manually.
-            </p>
-
-            <form onSubmit={handleSubmit} style={{ display: "flex", gap: 8 }}>
-              <input
-                value={submitUrl}
-                onChange={(e) => setSubmitUrl(e.target.value)}
-                placeholder="https://open.spotify.com/playlist/..."
-                style={{
-                  flex: 1,
-                  background: "var(--surface2)",
-                  border: "1px solid var(--border2)",
-                  color: "var(--text)",
-                  fontSize: 11,
-                  padding: "8px 14px",
-                  borderRadius: 3,
-                  outline: "none",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
-              />
-              <button
-                type="submit"
-                disabled={submitting || !submitUrl.trim()}
-                style={{
-                  background: submitting || !submitUrl.trim() ? "var(--surface2)" : "var(--accent)",
-                  color: "#000",
-                  border: "none",
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "8px 20px",
-                  cursor: submitting || !submitUrl.trim() ? "default" : "pointer",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  borderRadius: 3,
-                  opacity: submitting ? 0.6 : 1,
-                  transition: "opacity 0.2s",
-                }}
-              >
-                {submitting ? "···" : "Submit →"}
-              </button>
-            </form>
-
-            {submitResult && (
-              <div style={{
-                marginTop: 14,
-                padding: "10px 14px",
-                borderRadius: 3,
-                fontSize: 11,
-                background: submitResult.ok ? "rgba(184,240,80,0.08)" : "rgba(255,85,85,0.08)",
-                border: `1px solid ${submitResult.ok ? "var(--accent)" : "var(--hot)"}`,
-                color: submitResult.ok ? "var(--accent)" : "#ff8888",
-              }}>
-                {submitResult.message}
-              </div>
-            )}
-          </div>
-
           {/* Leaderboard */}
           <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 16 }}>
