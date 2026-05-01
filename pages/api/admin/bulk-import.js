@@ -28,8 +28,17 @@ export default async function handler(req, res) {
   const minFollowers = Number(req.body?.minFollowers) || 1000;
   const queries = req.body?.queries || SEARCH_QUERIES;
 
+  // Verify Spotify credentials first
+  const { getSpotifyToken } = await import("../../../lib/spotify.js");
+  try {
+    await getSpotifyToken();
+  } catch (err) {
+    return res.status(500).json({ error: `Spotify auth failed — check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in Railway Variables. (${err.message})` });
+  }
+
   const seen = new Set();
   const candidates = [];
+  const searchErrors = [];
   for (const query of queries) {
     try {
       const results = await searchPlaylists(query);
@@ -40,7 +49,7 @@ export default async function handler(req, res) {
         }
       }
     } catch (err) {
-      console.error(`Search failed for "${query}":`, err.message);
+      searchErrors.push(`"${query}": ${err.message}`);
     }
   }
 
@@ -88,5 +97,6 @@ export default async function handler(req, res) {
     skippedFollowers,
     skippedExisting,
     errors,
+    searchErrors,
   });
 }
