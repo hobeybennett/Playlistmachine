@@ -127,6 +127,16 @@ export default function Admin() {
                         <span style={{ color: "var(--text)", fontWeight: 700 }}>{val}</span>
                       </div>
                     ))}
+                    {result.data.searchCounts && (
+                      <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(0,0,0,0.2)", borderRadius: 3, fontSize: 10, color: "var(--muted)" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4, color: "var(--text)" }}>Results per query:</div>
+                        {Object.entries(result.data.searchCounts).map(([q, n]) => (
+                          <div key={q} style={{ display: "flex", justifyContent: "space-between" }}>
+                            <span>{q}</span><span style={{ color: n > 0 ? "var(--accent)" : "#ff8888" }}>{n}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     {result.data.searchErrors?.length > 0 && (
                       <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,85,85,0.08)", borderRadius: 3, fontSize: 10, color: "#ff8888" }}>
                         <div style={{ fontWeight: 700, marginBottom: 4 }}>Search errors:</div>

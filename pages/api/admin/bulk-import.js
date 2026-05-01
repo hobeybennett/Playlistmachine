@@ -40,9 +40,11 @@ export default async function handler(req, res) {
   const seen = new Set();
   const candidates = [];
   const searchErrors = [];
+  const searchCounts = {};
   for (const query of queries) {
     try {
       const results = await searchPlaylists(query);
+      searchCounts[query] = results.length;
       for (const p of results) {
         if (p?.id && !seen.has(p.id)) {
           seen.add(p.id);
@@ -101,5 +103,6 @@ export default async function handler(req, res) {
     skippedExisting,
     errors,
     searchErrors,
+    searchCounts,
   });
 }
