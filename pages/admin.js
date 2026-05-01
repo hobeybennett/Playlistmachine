@@ -28,7 +28,20 @@ export default function Admin() {
   const [pollResult, setPollResult] = useState(null);
   const [stats, setStats] = useState(null);
 
-  const loadStats = async (s = secret) => {
+  const [testResult, setTestResult] = useState(null);
+
+  const handleTest = async () => {
+    setTestResult("loading...");
+    try {
+      const res = await fetch("/api/admin/test-spotify", {
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      const data = await res.json();
+      setTestResult(JSON.stringify(data, null, 2));
+    } catch (e) {
+      setTestResult(e.message);
+    }
+  };
     if (!s) return;
     try {
       const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
@@ -161,6 +174,21 @@ export default function Admin() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Spotify Test */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>// Diagnose</div>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Test Spotify API</h2>
+            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16, lineHeight: 1.7 }}>
+              Tests playlist and track endpoints and shows the raw Spotify response.
+            </p>
+            {btn("Run Test →", handleTest, !secret, false)}
+            {testResult && (
+              <pre style={{ marginTop: 12, fontSize: 9, color: "var(--muted)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface2)", padding: 12, borderRadius: 3 }}>
+                {testResult}
+              </pre>
             )}
           </div>
 
