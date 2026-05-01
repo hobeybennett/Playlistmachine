@@ -127,6 +127,12 @@ export default function Admin() {
                         <span style={{ color: "var(--text)", fontWeight: 700 }}>{val}</span>
                       </div>
                     ))}
+                    {result.data.searchErrors?.length > 0 && (
+                      <div style={{ marginTop: 12, padding: "10px 12px", background: "rgba(255,85,85,0.08)", borderRadius: 3, fontSize: 10, color: "#ff8888" }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Search errors:</div>
+                        {result.data.searchErrors.map((e, i) => <div key={i}>{e}</div>)}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div style={{ fontSize: 11, color: "#ff8888" }}>{result.data.error}</div>
