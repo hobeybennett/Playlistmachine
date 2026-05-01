@@ -1,23 +1,5 @@
 import { sql } from "../../../lib/db.js";
-import { searchPlaylists, fetchPlaylist } from "../../../lib/spotify.js";
-
-const SEARCH_QUERIES = [
-  "new music friday",
-  "fresh finds",
-  "emerging artists",
-  "new music discovery",
-  "indie new releases",
-  "underground hip hop new",
-  "new artists 2025",
-  "music discovery playlist",
-  "up and coming artists",
-  "new indie pop",
-  "fresh rap",
-  "new r&b",
-  "new electronic music",
-  "bedroom pop new",
-  "alternative new releases",
-];
+import { discoverPlaylists, fetchPlaylist } from "../../../lib/spotify.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -26,33 +8,12 @@ export default async function handler(req, res) {
   }
 
   const minFollowers = Number(req.body?.minFollowers) || 1000;
-  const queries = req.body?.queries || SEARCH_QUERIES;
 
-  // Verify Spotify credentials first
-  const { getSpotifyToken } = await import("../../../lib/spotify.js");
+  let candidates;
   try {
-    await getSpotifyToken();
+    candidates = await discoverPlaylists();
   } catch (err) {
-    return res.status(500).json({ error: `Spotify auth failed — check SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET in Railway Variables. (${err.message})` });
-  }
-
-  const seen = new Set();
-  const candidates = [];
-  const searchErrors = [];
-  const searchCounts = {};
-  for (const query of queries) {
-    try {
-      const results = await searchPlaylists(query);
-      searchCounts[query] = results.length;
-      for (const p of results) {
-        if (p?.id && !seen.has(p.id)) {
-          seen.add(p.id);
-          candidates.push(p.id);
-        }
-      }
-    } catch (err) {
-      searchErrors.push(`"${query}": ${err.message}`);
-    }
+    return res.status(500).json({ error: `Discovery failed: ${err.message}` });
   }
 
   let imported = 0;
@@ -99,7 +60,5 @@ export default async function handler(req, res) {
     skippedFollowers,
     skippedExisting,
     errors,
-    searchErrors,
-    searchCounts,
   });
 }
