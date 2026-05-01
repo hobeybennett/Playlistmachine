@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
 
@@ -26,6 +26,15 @@ export default function Admin() {
   const [importResult, setImportResult] = useState(null);
   const [pollRunning, setPollRunning] = useState(false);
   const [pollResult, setPollResult] = useState(null);
+  const [stats, setStats] = useState(null);
+
+  const loadStats = async (s = secret) => {
+    if (!s) return;
+    try {
+      const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
+      if (res.ok) setStats(await res.json());
+    } catch {}
+  };
 
   const handleImport = async (e) => {
     e.preventDefault();
@@ -58,6 +67,7 @@ export default function Admin() {
       setPollResult({ ok: false, data: { error: "Network error" } });
     }
     setPollRunning(false);
+    loadStats();
   };
 
   const inputStyle = {
@@ -126,8 +136,32 @@ export default function Admin() {
               placeholder="Required for all actions"
               style={inputStyle}
               onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
+              onBlur={(e) => { e.target.style.borderColor = "var(--border2)"; loadStats(e.target.value); }}
             />
+            {stats && (
+              <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {[
+                  ["Curators", `${stats.curators.approved} / ${stats.curators.total}`],
+                  ["Unique Tracks", stats.tracks.total],
+                  ["Track Adds", stats.adds.total],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 12px", textAlign: "center" }}>
+                    <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{val}</div>
+                    <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {stats?.recent?.length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 10, color: "var(--muted)" }}>
+                <div style={{ marginBottom: 6, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>Most recent adds</div>
+                {stats.recent.map((t, i) => (
+                  <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid var(--border)" }}>
+                    {t.track_name} — {t.artist}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Trigger Poll */}
