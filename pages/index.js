@@ -142,6 +142,10 @@ export default function Home() {
             Curators
           </Link>
 
+          <Link href="/admin" style={{ fontSize: 10, color: "var(--faint)", letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
+            Admin
+          </Link>
+
           <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10, color: "var(--hot)", flexShrink: 0 }}>
             <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--hot)" }} />
             LIVE
@@ -194,19 +198,12 @@ export default function Home() {
           {!loading && tracks.length === 0 && !error && (
             <div style={{ padding: "100px 24px", textAlign: "center" }}>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: "var(--surface2)", marginBottom: 16 }}>
-                No tracks yet
+                Chart loading
               </div>
-              <div style={{ fontSize: 11, color: "var(--faint)", marginBottom: 24 }}>
-                Submit a curator playlist to start tracking emerging music.
+              <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.8 }}>
+                Tracks will appear here once the system has polled curator playlists.<br />
+                Check back after the next poll cycle.
               </div>
-              <Link href="/curators" style={{
-                display: "inline-block", fontSize: 10, fontWeight: 700,
-                letterSpacing: "0.1em", textTransform: "uppercase",
-                color: "#000", background: "var(--accent)",
-                padding: "10px 24px", borderRadius: 3, textDecoration: "none",
-              }}>
-                Add a Curator →
-              </Link>
             </div>
           )}
 
