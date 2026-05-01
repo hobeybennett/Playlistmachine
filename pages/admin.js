@@ -42,6 +42,8 @@ export default function Admin() {
       setTestResult(e.message);
     }
   };
+
+  const loadStats = async (s = secret) => {
     if (!s) return;
     try {
       const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
