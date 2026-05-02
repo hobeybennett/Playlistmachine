@@ -1,40 +1,56 @@
 import { sql } from "../../../lib/db.js";
-import { fetchPlaylistTracks, fetchTrackPopularities } from "../../../lib/spotify.js";
-import { recomputeAllScores } from "../../../lib/scoring.js";
+import { fetchPlaylistTracks } from "../../../lib/spotify.js";
+import { ingestPlaylistItems, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
+import { recomputeAllTrackScores, recomputeCuratorScore } from "../../../lib/ranking.js";
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  const results = {
+    curators: 0,
+    newTrackAdds: 0,
+    newTracksIngested: 0,
+    popularityRefreshed: 0,
+    snapshotsTaken: 0,
+    errors: [],
+  };
+
   try {
+    // ── Step 1: Poll each approved curator for new tracks ────────────────────
     const { rows: curators } = await sql`
       SELECT id, spotify_playlist_id FROM curators WHERE status = 'approved'
     `;
-
-    let totalAdds = 0;
+    results.curators = curators.length;
 
     for (const curator of curators) {
       try {
         const items = await fetchPlaylistTracks(curator.spotify_playlist_id);
+        if (!items.length) {
+          console.warn(`[poll] curator ${curator.id} (${curator.spotify_playlist_id}): 0 tracks returned`);
+          continue;
+        }
 
+        // Insert new track_adds (event log — curator spotted this track)
         const { rows: existing } = await sql`
           SELECT spotify_track_id FROM track_adds WHERE curator_id = ${curator.id}
         `;
         const existingIds = new Set(existing.map((r) => r.spotify_track_id));
-        const newItems = items.filter((item) => !existingIds.has(item.track.id));
+        const newItems = items.filter((item) => !existingIds.has(item.track?.id));
 
         for (const item of newItems) {
           const t = item.track;
-          const albumArt = t.album.images?.[1]?.url || t.album.images?.[0]?.url || null;
+          if (!t?.id) continue;
+          const albumArt = t.album?.images?.[1]?.url || t.album?.images?.[0]?.url || null;
           await sql`
             INSERT INTO track_adds (
               spotify_track_id, curator_id, track_name, artist, album,
               album_art, spotify_url, preview_url, playlist_added_at, popularity
             ) VALUES (
               ${t.id}, ${curator.id}, ${t.name},
-              ${t.artists.map((a) => a.name).join(", ")},
-              ${t.album.name}, ${albumArt},
+              ${(t.artists || []).map((a) => a.name).join(", ")},
+              ${t.album?.name || null}, ${albumArt},
               ${t.external_urls?.spotify || null},
               ${t.preview_url || null},
               ${item.added_at || null},
@@ -42,59 +58,42 @@ export default async function handler(req, res) {
             )
             ON CONFLICT (spotify_track_id, curator_id) DO NOTHING
           `;
-          totalAdds++;
+          results.newTrackAdds++;
         }
 
-        // Save snapshot
-        const { rows: [snap] } = await sql`
-          INSERT INTO snapshots (curator_id) VALUES (${curator.id}) RETURNING id
-        `;
-        for (const item of items.slice(0, 100)) {
-          const t = item.track;
-          const albumArt = t.album.images?.[1]?.url || t.album.images?.[0]?.url || null;
-          await sql`
-            INSERT INTO snapshot_tracks (
-              snapshot_id, spotify_track_id, track_name, artist, album,
-              album_art, spotify_url, playlist_added_at
-            ) VALUES (
-              ${snap.id}, ${t.id}, ${t.name},
-              ${t.artists.map((a) => a.name).join(", ")},
-              ${t.album.name}, ${albumArt},
-              ${t.external_urls?.spotify || null},
-              ${item.added_at || null}
-            )
-          `;
-        }
+        // Ingest all items into canonical tracks table (upsert, enriches with artist genres)
+        const ingested = await ingestPlaylistItems(items);
+        results.newTracksIngested += ingested;
+
+        // Update curator score based on track_adds
+        await recomputeCuratorScore(curator.id);
       } catch (err) {
-        console.error(`Poll error for curator ${curator.id}:`, err.message);
+        console.error(`[poll] curator ${curator.id} error:`, err.message);
+        results.errors.push({ curatorId: curator.id, error: err.message });
       }
     }
 
-    // Refresh popularity_current for tracks not updated in the last 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000).toISOString();
-    const { rows: stale } = await sql`
-      SELECT DISTINCT spotify_track_id FROM track_adds
-      WHERE popularity_refreshed_at IS NULL OR popularity_refreshed_at < ${sevenDaysAgo}
-      LIMIT 500
-    `;
-
-    if (stale.length) {
-      const ids = stale.map((r) => r.spotify_track_id);
-      const popularities = await fetchTrackPopularities(ids);
-      const now = new Date().toISOString();
-      for (const [trackId, pop] of Object.entries(popularities)) {
-        await sql`
-          UPDATE track_adds
-          SET popularity_current = ${pop}, popularity_refreshed_at = ${now}
-          WHERE spotify_track_id = ${trackId}
-        `;
-      }
+    // ── Step 2: Refresh stale Spotify popularity data ────────────────────────
+    try {
+      results.popularityRefreshed = await refreshTrackPopularities();
+    } catch (err) {
+      console.error("[poll] popularity refresh error:", err.message);
+      results.errors.push({ step: "refresh", error: err.message });
     }
 
-    await recomputeAllScores();
+    // ── Step 3: Take daily snapshots ─────────────────────────────────────────
+    try {
+      results.snapshotsTaken = await takeDailySnapshots();
+    } catch (err) {
+      console.error("[poll] daily snapshots error:", err.message);
+      results.errors.push({ step: "snapshots", error: err.message });
+    }
 
-    return res.status(200).json({ ok: true, totalAdds, curators: curators.length, popularityRefreshed: stale.length });
+    // ── Step 4: Recompute all track scores ───────────────────────────────────
+    await recomputeAllTrackScores();
+
+    return res.status(200).json({ ok: true, ...results });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message, ...results });
   }
 }
