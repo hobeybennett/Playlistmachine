@@ -10,8 +10,11 @@ export default async function handler(req, res) {
 
   const results = {
     curators: 0,
+    curatorsWithTracks: 0,
+    curatorsEmpty: 0,
     newTrackAdds: 0,
     newTracksIngested: 0,
+    tracksInDb: 0,
     popularityRefreshed: 0,
     snapshotsTaken: 0,
     errors: [],
@@ -32,8 +35,11 @@ export default async function handler(req, res) {
         const items = await fetchPlaylistTracks(curator.spotify_playlist_id);
         if (!items.length) {
           console.warn(`[poll] curator ${curator.id} (${curator.spotify_playlist_id}): 0 tracks returned`);
+          results.curatorsEmpty++;
           continue;
         }
+
+        results.curatorsWithTracks++;
 
         // Insert new track_adds (event log — curator spotted this track)
         const { rows: existing } = await sql`
@@ -94,6 +100,10 @@ export default async function handler(req, res) {
 
     // ── Step 4: Recompute all track scores ───────────────────────────────────
     await recomputeAllTrackScores();
+
+    // ── Final: DB state summary ──────────────────────────────────────────────
+    const { rows: [countRow] } = await sql`SELECT COUNT(*)::int AS n FROM tracks`;
+    results.tracksInDb = countRow?.n ?? 0;
 
     return res.status(200).json({ ok: true, ...results });
   } catch (err) {
