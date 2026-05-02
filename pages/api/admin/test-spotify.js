@@ -29,35 +29,44 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const market = process.env.SPOTIFY_MARKET || "AU";
   const testPlaylistId = "37i9dQZF1DX4JAvHpjipBk"; // New Music Friday
-  const testTrackId = "3n3Ppam7vgaVa1iaRUIOKE"; // Shape of You
 
   try {
     const { token, type } = await getTestToken();
 
-    const [r1, r2, r3] = await Promise.all([
-      fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}/tracks?market=${market}&limit=5`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-      fetch(`https://api.spotify.com/v1/tracks/${testTrackId}?market=${market}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      }),
-    ]);
+    // Sequential requests to minimise rate-limit pressure during diagnostics
+    const r1 = await fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const playlistBody = await r1.text();
 
-    const [playlist, tracks, track] = await Promise.all([r1.text(), r2.text(), r3.text()]);
+    const r2 = await fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}/tracks?limit=3`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const tracksBody = await r2.text();
+
+    // Fetch the first real track from the playlist (no hardcoded ID, no market param)
+    let trackStatus = null;
+    let trackBody = null;
+    try {
+      const firstTrackId = JSON.parse(tracksBody)?.items?.[0]?.track?.id;
+      if (firstTrackId) {
+        const r3 = await fetch(`https://api.spotify.com/v1/tracks/${firstTrackId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        trackStatus = r3.status;
+        trackBody = (await r3.text()).slice(0, 300);
+      }
+    } catch {}
 
     return res.status(200).json({
       tokenType: type,
       playlistStatus: r1.status,
-      playlistBody: playlist.slice(0, 600),
+      playlistBody: playlistBody.slice(0, 600),
       tracksStatus: r2.status,
-      tracksBody: tracks.slice(0, 600),
-      trackStatus: r3.status,
-      trackBody: track.slice(0, 300),
+      tracksBody: tracksBody.slice(0, 400),
+      trackStatus,
+      trackBody,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
