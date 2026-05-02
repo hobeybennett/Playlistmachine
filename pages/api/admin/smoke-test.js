@@ -53,11 +53,12 @@ export default async function handler(req, res) {
       const r = await fetch("https://api.spotify.com/v1/playlists/37i9dQZF1DX4JAvHpjipBk/tracks?limit=3", {
         headers: { Authorization: `Bearer ${token}` },
       });
+      const body = await r.text();
       if (r.status === 200) {
-        const d = await r.json();
+        const d = JSON.parse(body);
         pass("playlist_read", `${d.items?.length ?? 0} items`);
       } else {
-        fail("playlist_read", `HTTP ${r.status}`);
+        fail("playlist_read", `HTTP ${r.status}: ${body.slice(0, 200)}`);
       }
     } catch (e) {
       fail("playlist_read", e.message);

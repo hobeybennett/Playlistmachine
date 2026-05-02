@@ -300,13 +300,21 @@ export default function Admin() {
             {btn(smokeRunning ? "Running..." : "Run Tests →", handleSmoke, smokeRunning || !secret, smokeRunning)}
             {smokeResult && (
               <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                  <button
+                    onClick={() => { try { navigator.clipboard.writeText(JSON.stringify(smokeResult.data, null, 2)); } catch {} }}
+                    style={{ fontSize: 9, padding: "3px 10px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)", borderRadius: 2, cursor: "pointer", letterSpacing: "0.05em" }}
+                  >
+                    Copy JSON
+                  </button>
+                </div>
                 {smokeResult.data?.results?.map((r, i) => (
-                  <div key={i} style={{ display: "flex", gap: 8, padding: "3px 0", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
+                  <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
                     <span style={{ color: r.status === "pass" ? "var(--accent)" : "var(--hot)", flexShrink: 0 }}>
                       {r.status === "pass" ? "✓" : "✗"}
                     </span>
-                    <span style={{ color: "var(--text)", flexShrink: 0 }}>{r.label}</span>
-                    <span style={{ color: "var(--muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ color: "var(--text)", flexShrink: 0, minWidth: 140 }}>{r.label}</span>
+                    <span style={{ color: "var(--muted)", fontSize: 10, wordBreak: "break-word" }}>
                       {typeof r.detail === "object" ? JSON.stringify(r.detail) : String(r.detail ?? "")}
                     </span>
                   </div>
