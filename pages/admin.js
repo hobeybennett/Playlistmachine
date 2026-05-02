@@ -58,6 +58,9 @@ export default function Admin() {
   const [stats, setStats] = useState(null);
   const [syncs, setSyncs] = useState(null);
 
+  const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
+  const [spotifyAuthLoading, setSpotifyAuthLoading] = useState(false);
+
   const [testResult, setTestResult] = useState(null);
   const [importRunning, setImportRunning] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -85,6 +88,16 @@ export default function Admin() {
       const res = await fetch("/api/admin/playlist-syncs", { headers: { Authorization: `Bearer ${s}` } });
       if (res.ok) setSyncs(await res.json());
     } catch {}
+  };
+
+  const handleSpotifyAuth = async () => {
+    setSpotifyAuthLoading(true);
+    try {
+      const res = await fetch("/api/admin/spotify-auth", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await res.json();
+      if (data.authUrl) setSpotifyAuthUrl(data.authUrl);
+    } catch {}
+    setSpotifyAuthLoading(false);
   };
 
   const handleTest = async () => {
@@ -222,6 +235,35 @@ export default function Admin() {
                     <span style={{ color: "var(--faint)", fontSize: 9 }}>{new Date(t.detected_at).toLocaleDateString()}</span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Connect Spotify (OAuth) */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
+            {sectionHead("// Required", "Connect Spotify Account")}
+            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
+              Spotify's API now requires user OAuth to read playlist tracks. Click below to authorize, then open the link in your browser.
+            </p>
+            <div style={{ fontSize: 10, color: "var(--faint)", marginBottom: 12, lineHeight: 1.8 }}>
+              Before clicking, add this redirect URI to your Spotify app in the{" "}
+              <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>
+                Spotify Developer Dashboard
+              </a>:
+              <code style={{ display: "block", marginTop: 6, padding: "6px 10px", background: "var(--surface2)", borderRadius: 2, fontSize: 10, color: "var(--text)", wordBreak: "break-all" }}>
+                {typeof window !== "undefined" ? `${window.location.origin}/api/admin/spotify-callback` : "/api/admin/spotify-callback"}
+              </code>
+            </div>
+            {btn(spotifyAuthLoading ? "Loading..." : "Get Auth URL →", handleSpotifyAuth, !secret || spotifyAuthLoading, spotifyAuthLoading)}
+            {spotifyAuthUrl && (
+              <div style={{ marginTop: 12, padding: 12, background: "rgba(184,240,80,0.08)", border: "1px solid var(--accent)", borderRadius: 3 }}>
+                <div style={{ fontSize: 9, color: "var(--accent)", marginBottom: 8, letterSpacing: "0.1em" }}>OPEN THIS URL IN YOUR BROWSER:</div>
+                <a href={spotifyAuthUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: "var(--accent)", wordBreak: "break-all" }}>
+                  {spotifyAuthUrl}
+                </a>
+                <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 8 }}>
+                  After authorizing, you'll be redirected to a page that says "Spotify connected". You only need to do this once.
+                </div>
               </div>
             )}
           </div>
