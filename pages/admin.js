@@ -52,7 +52,9 @@ const sectionHead = (tag, title) => (
 );
 
 export default function Admin() {
-  const [secret, setSecret] = useState("");
+  const [secret, setSecret] = useState(() => {
+    try { return localStorage.getItem("pm_admin_secret") || ""; } catch { return ""; }
+  });
   const [minFollowers, setMinFollowers] = useState("1000");
 
   const [stats, setStats] = useState(null);
@@ -73,6 +75,8 @@ export default function Admin() {
 
   const [scoreTrackId, setScoreTrackId] = useState("");
   const [scoreResult, setScoreResult] = useState(null);
+
+  useEffect(() => { if (secret) { loadStats(secret); loadSyncs(secret); } }, []); // eslint-disable-line
 
   const loadStats = async (s = secret) => {
     if (!s) return;
@@ -205,7 +209,7 @@ export default function Admin() {
             <input
               type="password"
               value={secret}
-              onChange={(e) => setSecret(e.target.value)}
+              onChange={(e) => { setSecret(e.target.value); try { localStorage.setItem("pm_admin_secret", e.target.value); } catch {} }}
               placeholder="Required for all actions"
               style={inputStyle}
               onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
