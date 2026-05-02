@@ -12,7 +12,6 @@ export default function handler(req, res) {
     || `${req.headers["x-forwarded-proto"] || "https"}://${req.headers.host}/api/admin/spotify-callback`;
 
   const scopes = [
-    "playlist-read-public",
     "playlist-read-private",
     "playlist-modify-public",
     "playlist-modify-private",
