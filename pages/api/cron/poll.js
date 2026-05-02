@@ -17,6 +17,8 @@ export default async function handler(req, res) {
     errors: [],
   };
 
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
   try {
     // ── Step 1: Poll each approved curator for new tracks ────────────────────
     const { rows: curators } = await sql`
@@ -25,6 +27,7 @@ export default async function handler(req, res) {
     results.curators = curators.length;
 
     for (const curator of curators) {
+      await sleep(300); // avoid Spotify 429s
       try {
         const items = await fetchPlaylistTracks(curator.spotify_playlist_id);
         if (!items.length) {
