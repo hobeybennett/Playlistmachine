@@ -61,6 +61,8 @@ export default function Admin() {
   const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
   const [spotifyAuthLoading, setSpotifyAuthLoading] = useState(false);
 
+  const [smokeRunning, setSmokeRunning] = useState(false);
+  const [smokeResult, setSmokeResult] = useState(null);
   const [testResult, setTestResult] = useState(null);
   const [importRunning, setImportRunning] = useState(false);
   const [importResult, setImportResult] = useState(null);
@@ -109,6 +111,16 @@ export default function Admin() {
       if (data.authUrl) setSpotifyAuthUrl(data.authUrl);
     } catch {}
     setSpotifyAuthLoading(false);
+  };
+
+  const handleSmoke = async () => {
+    setSmokeRunning(true); setSmokeResult(null);
+    try {
+      const res = await fetch("/api/admin/smoke-test", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await res.json();
+      setSmokeResult({ ok: res.ok && data.ok, data });
+    } catch { setSmokeResult({ ok: false, data: { error: "Network error" } }); }
+    setSmokeRunning(false);
   };
 
   const handleTest = async () => {
@@ -275,6 +287,30 @@ export default function Admin() {
                 <div style={{ fontSize: 9, color: "var(--muted)", marginTop: 8 }}>
                   After authorizing, you'll be redirected to a page that says "Spotify connected". You only need to do this once.
                 </div>
+              </div>
+            )}
+          </div>
+
+          {/* Smoke Test */}
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
+            {sectionHead("// Diagnose", "Run All Checks")}
+            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
+              Tests DB, Spotify auth, playlist reads, ingestion, and chart query in one shot.
+            </p>
+            {btn(smokeRunning ? "Running..." : "Run Tests →", handleSmoke, smokeRunning || !secret, smokeRunning)}
+            {smokeResult && (
+              <div style={{ marginTop: 12 }}>
+                {smokeResult.data?.results?.map((r, i) => (
+                  <div key={i} style={{ display: "flex", gap: 8, padding: "3px 0", fontSize: 11, borderBottom: "1px solid var(--border)" }}>
+                    <span style={{ color: r.status === "pass" ? "var(--accent)" : "var(--hot)", flexShrink: 0 }}>
+                      {r.status === "pass" ? "✓" : "✗"}
+                    </span>
+                    <span style={{ color: "var(--text)", flexShrink: 0 }}>{r.label}</span>
+                    <span style={{ color: "var(--muted)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {typeof r.detail === "object" ? JSON.stringify(r.detail) : String(r.detail ?? "")}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

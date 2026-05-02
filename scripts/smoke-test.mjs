@@ -1,10 +1,6 @@
 #!/usr/bin/env node
-// Smoke test against the live Railway deployment.
-// Run: node scripts/smoke-test.js
-//
-// Requires .env.local with:
-//   BASE_URL=https://playlistmachine-production.up.railway.app
-//   CRON_SECRET=your_secret_here
+// Integration test — runs lib functions directly against the real DB + Spotify.
+// Run: node scripts/smoke-test.mjs
 
 import { readFileSync } from "fs";
 import { resolve } from "path";
@@ -13,23 +9,19 @@ import { resolve } from "path";
 try {
   const env = readFileSync(resolve(process.cwd(), ".env.local"), "utf8");
   for (const line of env.split("\n")) {
-    const [k, ...v] = line.trim().split("=");
-    if (k && !k.startsWith("#") && v.length) process.env[k] = v.join("=");
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const eq = trimmed.indexOf("=");
+    if (eq === -1) continue;
+    const k = trimmed.slice(0, eq);
+    const v = trimmed.slice(eq + 1);
+    if (!process.env[k]) process.env[k] = v;
   }
 } catch {
-  console.error("✗ Missing .env.local — create it with BASE_URL and CRON_SECRET");
+  console.error("✗ Missing .env.local");
   process.exit(1);
 }
 
-const BASE_URL = process.env.BASE_URL?.replace(/\/$/, "");
-const SECRET = process.env.CRON_SECRET;
-
-if (!BASE_URL || !SECRET) {
-  console.error("✗ .env.local must contain BASE_URL and CRON_SECRET");
-  process.exit(1);
-}
-
-const auth = { Authorization: `Bearer ${SECRET}` };
 let passed = 0;
 let failed = 0;
 
@@ -37,103 +29,132 @@ function pass(label, detail = "") {
   console.log(`  ✓ ${label}${detail ? `  (${detail})` : ""}`);
   passed++;
 }
-
 function fail(label, detail = "") {
   console.error(`  ✗ ${label}${detail ? `  — ${detail}` : ""}`);
   failed++;
 }
 
-async function get(path, headers = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, { headers });
-  let body;
-  try { body = await res.json(); } catch { body = {}; }
-  return { status: res.status, body };
+// ── 1. Database ───────────────────────────────────────────────────────────────
+console.log("\n── Database");
+try {
+  const { sql } = await import("../lib/db.js");
+
+  const { rows: [r] } = await sql`SELECT 1 AS ok`;
+  if (r?.ok) pass("DB connection");
+  else fail("DB connection", "unexpected response");
+
+  const { rows: [counts] } = await sql`
+    SELECT
+      (SELECT COUNT(*)::int FROM curators WHERE status='approved') AS curators,
+      (SELECT COUNT(*)::int FROM tracks)                           AS tracks,
+      (SELECT COUNT(*)::int FROM tracks WHERE popularity > 0)      AS tracks_with_pop,
+      (SELECT COUNT(*)::int FROM track_adds)                       AS adds
+  `;
+  pass("DB tables readable");
+  console.log(`     curators=${counts.curators}  tracks=${counts.tracks}  tracks_with_pop=${counts.tracks_with_pop}  adds=${counts.adds}`);
+
+  if (counts.curators === 0) fail("approved curators", "0 — add curators first");
+  else pass("approved curators", String(counts.curators));
+
+  if (counts.tracks_with_pop === 0) fail("tracks with popularity > 0", "0 — ingestion hasn't run yet");
+  else pass("tracks with popularity > 0", String(counts.tracks_with_pop));
+
+} catch (e) {
+  fail("DB connection", e.message);
 }
 
-async function post(path, headers = {}) {
-  const res = await fetch(`${BASE_URL}${path}`, { method: "POST", headers });
-  let body;
-  try { body = await res.json(); } catch { body = {}; }
-  return { status: res.status, body };
-}
+// ── 2. Spotify auth ───────────────────────────────────────────────────────────
+console.log("\n── Spotify");
+let spotifyToken = null;
+try {
+  const { getSpotifyToken, getUserToken } = await import("../lib/spotify.js");
 
-// ── Tests ──────────────────────────────────────────────────────────────────
-
-async function testSpotify() {
-  console.log("\n── Spotify connectivity");
-  const { status, body } = await get("/api/admin/test-spotify", auth);
-  if (status !== 200) return fail("test-spotify responded", `HTTP ${status}`);
-
-  if (body.tokenType === "user_oauth") pass("OAuth token active");
-  else fail("OAuth token", `got ${body.tokenType} — run Connect Spotify in admin`);
-
-  if (body.playlistStatus === 200) pass("playlist read OK");
-  else fail("playlist read", `HTTP ${body.playlistStatus}`);
-
-  if (body.tracksStatus === 200) pass("playlist tracks read OK");
-  else fail("playlist tracks", `HTTP ${body.tracksStatus}`);
-}
-
-async function testPoll() {
-  console.log("\n── Poll");
-  const { status, body } = await get("/api/cron/poll", auth);
-  if (status !== 200) return fail("poll responded", `HTTP ${status} — ${body.error || ""}`);
-
-  pass("poll completed without crash");
-
-  if (body.errors?.length) fail("poll errors", JSON.stringify(body.errors.slice(0, 2)));
-  else pass("no per-curator errors");
-
-  if (body.curatorsEmpty === body.curators && body.curators > 0) {
-    fail("curators returned tracks", `all ${body.curators} came back empty — Spotify may still be rate-limiting`);
-  } else {
-    pass("curators with tracks", `${body.curatorsWithTracks} / ${body.curators}`);
+  try {
+    spotifyToken = await getUserToken();
+    pass("OAuth user token");
+  } catch (e) {
+    fail("OAuth user token", e.message.slice(0, 80));
+    try {
+      spotifyToken = await getSpotifyToken();
+      pass("client-credentials fallback token");
+    } catch (e2) {
+      fail("client-credentials token", e2.message.slice(0, 80));
+    }
   }
-
-  if (body.tracksInDb > 0) pass("tracks in DB", `${body.tracksInDb} tracks`);
-  else fail("tracks in DB", "0 — ingestion has not run or all tracks have popularity=0");
-
-  console.log(`     newAdds=${body.newTrackAdds}  newIngested=${body.newTracksIngested}  refreshed=${body.popularityRefreshed}  snapshots=${body.snapshotsTaken}`);
+} catch (e) {
+  fail("Spotify import", e.message);
 }
 
-async function testChart() {
-  console.log("\n── Chart API");
-  const { status, body } = await get("/api/charts?genre=all&page=1");
-  if (status !== 200) return fail("charts responded", `HTTP ${status}`);
-  pass("charts API responded");
-
-  if (body.tracks?.length > 0) {
-    pass("chart has tracks", `${body.tracks.length} on page 1, ${body.total} total`);
-    const sample = body.tracks[0];
-    if (sample.popularity > 0) pass("tracks have popularity scores");
-    else fail("tracks have popularity", "first track has popularity=0");
-    if (sample.final_score !== undefined) pass("tracks have final_score");
-    else fail("tracks missing final_score");
-  } else {
-    fail("chart has tracks", "0 returned — run poll first");
+// ── 3. Spotify playlist read ──────────────────────────────────────────────────
+if (spotifyToken) {
+  try {
+    const res = await fetch("https://api.spotify.com/v1/playlists/37i9dQZF1DX4JAvHpjipBk/tracks?limit=3", {
+      headers: { Authorization: `Bearer ${spotifyToken}` },
+    });
+    if (res.status === 200) {
+      const data = await res.json();
+      pass("playlist tracks read", `${data.items?.length ?? 0} items`);
+    } else if (res.status === 429) {
+      fail("playlist tracks read", "429 rate-limited — wait a few minutes and retry");
+    } else {
+      fail("playlist tracks read", `HTTP ${res.status}`);
+    }
+  } catch (e) {
+    fail("playlist tracks read", e.message);
   }
 }
 
-async function testHomepage() {
-  console.log("\n── Homepage");
-  const res = await fetch(BASE_URL);
-  if (res.status === 200) pass("homepage loads", `HTTP ${res.status}`);
-  else fail("homepage loads", `HTTP ${res.status}`);
+// ── 4. Poll one curator ───────────────────────────────────────────────────────
+console.log("\n── Poll (one curator sample)");
+try {
+  const { sql } = await import("../lib/db.js");
+  const { fetchPlaylistTracks } = await import("../lib/spotify.js");
+  const { ingestPlaylistItems } = await import("../lib/ingestion.js");
+
+  const { rows: [curator] } = await sql`
+    SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
+  `;
+
+  if (!curator) {
+    fail("curator available", "none approved in DB");
+  } else {
+    const items = await fetchPlaylistTracks(curator.spotify_playlist_id);
+    if (items.length === 0) {
+      fail("playlist returned tracks", `0 from ${curator.spotify_playlist_id}`);
+    } else {
+      pass("playlist returned tracks", `${items.length} from curator ${curator.id}`);
+      const ingested = await ingestPlaylistItems(items);
+      pass("ingestion ran", `${ingested} new tracks inserted`);
+    }
+  }
+} catch (e) {
+  fail("poll sample", e.message);
 }
 
-// ── Run ────────────────────────────────────────────────────────────────────
+// ── 5. Chart query ────────────────────────────────────────────────────────────
+console.log("\n── Chart");
+try {
+  const { sql } = await import("../lib/db.js");
+  const { rows } = await sql`
+    SELECT name, artists, popularity, final_score
+    FROM tracks WHERE popularity > 0
+    ORDER BY final_score DESC, popularity DESC
+    LIMIT 5
+  `;
+  if (rows.length === 0) {
+    fail("chart has tracks", "0 results — poll hasn't completed yet");
+  } else {
+    pass("chart has tracks", `top: "${rows[0].name}" — ${rows[0].artists} (pop=${rows[0].popularity} score=${Math.round(rows[0].final_score)})`);
+  }
+} catch (e) {
+  fail("chart query", e.message);
+}
 
-console.log(`Smoke test → ${BASE_URL}`);
-
-await testHomepage();
-await testSpotify();
-await testPoll();
-await testChart();
-
-console.log(`\n${"─".repeat(40)}`);
+// ── Summary ───────────────────────────────────────────────────────────────────
+console.log(`\n${"─".repeat(50)}`);
 if (failed === 0) {
   console.log(`All ${passed} checks passed ✓`);
 } else {
-  console.log(`${passed} passed, ${failed} failed ✗`);
+  console.log(`${passed} passed  ${failed} failed ✗`);
   process.exit(1);
 }
