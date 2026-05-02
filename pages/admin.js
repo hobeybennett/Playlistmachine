@@ -52,9 +52,7 @@ const sectionHead = (tag, title) => (
 );
 
 export default function Admin() {
-  const [secret, setSecret] = useState(() => {
-    try { return localStorage.getItem("pm_admin_secret") || ""; } catch { return ""; }
-  });
+  const [secret, setSecret] = useState("");
   const [minFollowers, setMinFollowers] = useState("1000");
 
   const [stats, setStats] = useState(null);
@@ -76,7 +74,16 @@ export default function Admin() {
   const [scoreTrackId, setScoreTrackId] = useState("");
   const [scoreResult, setScoreResult] = useState(null);
 
-  useEffect(() => { if (secret) { loadStats(secret); loadSyncs(secret); } }, []); // eslint-disable-line
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("pm_admin_secret");
+      if (stored) {
+        setSecret(stored);
+        loadStats(stored);
+        loadSyncs(stored);
+      }
+    } catch {}
+  }, []); // eslint-disable-line
 
   const loadStats = async (s = secret) => {
     if (!s) return;
