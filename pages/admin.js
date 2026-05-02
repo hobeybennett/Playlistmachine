@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
 
@@ -26,6 +26,29 @@ export default function Admin() {
   const [importResult, setImportResult] = useState(null);
   const [pollRunning, setPollRunning] = useState(false);
   const [pollResult, setPollResult] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+
+  const handleTest = async () => {
+    setTestResult("loading...");
+    try {
+      const res = await fetch("/api/admin/test-spotify", {
+        headers: { Authorization: `Bearer ${secret}` },
+      });
+      const data = await res.json();
+      setTestResult(JSON.stringify(data, null, 2));
+    } catch (e) {
+      setTestResult(e.message);
+    }
+  };
+
+  const loadStats = async (s = secret) => {
+    if (!s) return;
+    try {
+      const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
+      if (res.ok) setStats(await res.json());
+    } catch {}
+  };
 
   const handleImport = async (e) => {
     e.preventDefault();
@@ -58,6 +81,7 @@ export default function Admin() {
       setPollResult({ ok: false, data: { error: "Network error" } });
     }
     setPollRunning(false);
+    loadStats();
   };
 
   const inputStyle = {
@@ -114,9 +138,7 @@ export default function Admin() {
         <div style={{ maxWidth: 540, margin: "0 auto", padding: "40px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 12 }}>
-              // Auth
-            </div>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 12 }}>// Auth</div>
             {fieldLabel("Cron Secret")}
             <input
               type="password"
@@ -125,36 +147,57 @@ export default function Admin() {
               placeholder="Required for all actions"
               style={inputStyle}
               onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
+              onBlur={(e) => { e.target.style.borderColor = "var(--border2)"; loadStats(e.target.value); }}
             />
+            {stats && (
+              <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                {[
+                  ["Curators", `${stats.curators.approved} / ${stats.curators.total}`],
+                  ["Unique Tracks", stats.tracks.total],
+                  ["Track Adds", stats.adds.total],
+                ].map(([label, val]) => (
+                  <div key={label} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 12px", textAlign: "center" }}>
+                    <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{val}</div>
+                    <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {stats?.recent?.length > 0 && (
+              <div style={{ marginTop: 12, fontSize: 10, color: "var(--muted)" }}>
+                <div style={{ marginBottom: 6, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>Most recent adds</div>
+                {stats.recent.map((t, i) => (
+                  <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid var(--border)" }}>{t.track_name} — {t.artist}</div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>
-              // Step 1
-            </div>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
-              Poll Playlists
-            </h2>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>// Diagnose</div>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Test Spotify API</h2>
+            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16, lineHeight: 1.7 }}>
+              Tests playlist and track endpoints and shows the raw Spotify response.
+            </p>
+            {btn("Run Test →", handleTest, !secret, false)}
+            {testResult && (
+              <pre style={{ marginTop: 12, fontSize: 9, color: "var(--muted)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface2)", padding: 12, borderRadius: 3 }}>{testResult}</pre>
+            )}
+          </div>
+
+          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>// Step 1</div>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Poll Playlists</h2>
             <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16, lineHeight: 1.7 }}>
               Fetches all approved curator playlists from Spotify, detects new track adds, and refreshes popularity scores. Run this after importing to populate the chart.
             </p>
-            {btn(
-              pollRunning ? "Polling — may take a few minutes..." : "Trigger Poll →",
-              handlePoll,
-              pollRunning || !secret,
-              pollRunning
-            )}
+            {btn(pollRunning ? "Polling — may take a few minutes..." : "Trigger Poll →", handlePoll, pollRunning || !secret, pollRunning)}
             {resultBox(pollResult)}
           </div>
 
           <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>
-              // Step 2 (optional)
-            </div>
-            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
-              Discover Playlists
-            </h2>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>// Step 2 (optional)</div>
+            <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Discover Playlists</h2>
             <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 16, lineHeight: 1.7 }}>
               Discovers new playlists from Spotify editorial and genre categories and imports those meeting the follower minimum.
             </p>
@@ -168,12 +211,7 @@ export default function Admin() {
                 onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
                 onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
               />
-              {btn(
-                importRunning ? "Importing..." : "Run Discovery →",
-                handleImport,
-                importRunning || !secret,
-                importRunning
-              )}
+              {btn(importRunning ? "Importing..." : "Run Discovery →", handleImport, importRunning || !secret, importRunning)}
             </form>
             {resultBox(importResult)}
           </div>
