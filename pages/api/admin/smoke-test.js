@@ -2,6 +2,14 @@ import { sql } from "../../../lib/db.js";
 import { getSpotifyToken, getUserToken, fetchPlaylistTracks } from "../../../lib/spotify.js";
 import { ingestPlaylistItems } from "../../../lib/ingestion.js";
 
+async function spotifyGet(token, path) {
+  const r = await fetch(`https://api.spotify.com/v1${path}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const body = await r.text();
+  return { status: r.status, body };
+}
+
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
@@ -47,25 +55,67 @@ export default async function handler(req, res) {
     }
   }
 
-  // ── Playlist read ──────────────────────────────────────────────────────────
   if (token) {
+    // ── /me (confirms token is live and shows scopes indirectly) ──────────────
     try {
-      const r = await fetch("https://api.spotify.com/v1/playlists/37i9dQZF1DX4JAvHpjipBk/tracks?limit=3", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const body = await r.text();
-      if (r.status === 200) {
+      const { status, body } = await spotifyGet(token, "/me");
+      if (status === 200) {
         const d = JSON.parse(body);
-        pass("playlist_read", `${d.items?.length ?? 0} items`);
+        pass("spotify_me", `${d.display_name || d.id} (${d.product || "unknown plan"})`);
       } else {
-        fail("playlist_read", `HTTP ${r.status}: ${body.slice(0, 200)}`);
+        fail("spotify_me", `HTTP ${status}: ${body.slice(0, 150)}`);
       }
     } catch (e) {
-      fail("playlist_read", e.message);
+      fail("spotify_me", e.message);
+    }
+
+    // ── Playlist metadata (no tracks) ──────────────────────────────────────────
+    const testPlaylistId = "37i9dQZF1DX4JAvHpjipBk";
+    try {
+      const { status, body } = await spotifyGet(token, `/playlists/${testPlaylistId}?fields=id,name,tracks.total`);
+      if (status === 200) {
+        const d = JSON.parse(body);
+        pass("playlist_metadata", `"${d.name}" — ${d.tracks?.total} tracks`);
+      } else {
+        fail("playlist_metadata", `HTTP ${status}: ${body.slice(0, 150)}`);
+      }
+    } catch (e) {
+      fail("playlist_metadata", e.message);
+    }
+
+    // ── Playlist tracks ────────────────────────────────────────────────────────
+    try {
+      const { status, body } = await spotifyGet(token, `/playlists/${testPlaylistId}/tracks?limit=3`);
+      if (status === 200) {
+        const d = JSON.parse(body);
+        pass("playlist_tracks", `${d.items?.length ?? 0} items returned`);
+      } else {
+        fail("playlist_tracks", `HTTP ${status}: ${body.slice(0, 200)}`);
+      }
+    } catch (e) {
+      fail("playlist_tracks", e.message);
+    }
+
+    // ── First curator playlist tracks (real curator, not editorial) ────────────
+    try {
+      const { rows: [curator] } = await sql`
+        SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
+      `;
+      if (curator) {
+        const { status, body } = await spotifyGet(token, `/playlists/${curator.spotify_playlist_id}/tracks?limit=3`);
+        if (status === 200) {
+          const d = JSON.parse(body);
+          pass("curator_tracks", `curator ${curator.id}: ${d.items?.length ?? 0} tracks returned`);
+        } else {
+          fail("curator_tracks", `curator ${curator.id} HTTP ${status}: ${body.slice(0, 200)}`);
+        }
+      }
+    } catch (e) {
+      fail("curator_tracks", e.message);
     }
   }
 
-  // ── Poll one curator ───────────────────────────────────────────────────────
+  // ── Poll one curator (full ingest) ─────────────────────────────────────────
   try {
     const { rows: [curator] } = await sql`
       SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
@@ -75,7 +125,7 @@ export default async function handler(req, res) {
     } else {
       const items = await fetchPlaylistTracks(curator.spotify_playlist_id);
       if (items.length === 0) {
-        fail("poll_sample", `0 tracks from curator ${curator.id} (${curator.spotify_playlist_id})`);
+        fail("poll_sample", `0 tracks from curator ${curator.id} — check curator_tracks above`);
       } else {
         pass("poll_sample_fetch", `${items.length} tracks from curator ${curator.id}`);
         const ingested = await ingestPlaylistItems(items);
@@ -96,7 +146,7 @@ export default async function handler(req, res) {
     if (rows.length === 0) {
       fail("chart", "0 tracks with popularity > 0");
     } else {
-      pass("chart", `${rows.length} tracks; top: "${rows[0].name}" — ${rows[0].artists} pop=${rows[0].popularity} score=${Math.round(rows[0].final_score)}`);
+      pass("chart", `top: "${rows[0].name}" — ${rows[0].artists} pop=${rows[0].popularity} score=${Math.round(rows[0].final_score)}`);
     }
   } catch (e) {
     fail("chart", e.message);
