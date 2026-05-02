@@ -1,4 +1,4 @@
-# Playlist Machine 🎵
+# Playlist Machine
 
 > Track which playlist curators are adding tracks before they blow up.
 
@@ -6,59 +6,48 @@ A Hype Machine-style app for the streaming era — instead of tracking music blo
 
 ## Stack
 
-- **Next.js** (React + API routes)
-- **Vercel** (hosting + serverless functions)
+- **Next.js 15** (React + API routes)
+- **Vercel** (hosting + serverless functions + cron)
+- **Neon** (Postgres database)
 - **Spotify Web API** (playlist + track data)
 
-## Local Development
+## Setup
 
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/playlistmachine.git
-cd playlistmachine
+git clone https://github.com/hobeybennett/Playlistmachine.git
+cd Playlistmachine
 npm install
 ```
 
 ### 2. Set up environment variables
 
-Copy `.env.example` to `.env.local` and fill in your Spotify credentials:
-
 ```bash
 cp .env.example .env.local
 ```
 
-```env
-SPOTIFY_CLIENT_ID=your_client_id_here
-SPOTIFY_CLIENT_SECRET=your_client_secret_here
+Fill in all four values — see `.env.example` for details:
+- `SPOTIFY_CLIENT_ID` + `SPOTIFY_CLIENT_SECRET` from [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
+- `POSTGRES_URL` from [neon.tech](https://neon.tech)
+- `CRON_SECRET` — any random string (e.g. `openssl rand -hex 32`)
+
+### 3. Run migrations
+
+```bash
+curl -X POST http://localhost:3000/api/migrate \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
 ```
 
-Get credentials at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
+### 4. Add curator playlists
 
-### 3. Run locally
+Go to `/curators` and paste in public Spotify playlist URLs. Playlists with 100+ followers auto-approve.
+
+### 5. Run locally
 
 ```bash
 npm run dev
 ```
-
-Open [http://localhost:3000](http://localhost:3000).
-
----
-
-## Deploy to Vercel
-
-### One-click deploy
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new)
-
-### Manual steps
-
-1. Push this repo to GitHub
-2. Go to [vercel.com](https://vercel.com) → New Project → Import your repo
-3. Add environment variables in Vercel dashboard:
-   - `SPOTIFY_CLIENT_ID`
-   - `SPOTIFY_CLIENT_SECRET`
-4. Deploy — Vercel auto-detects Next.js
 
 ---
 
@@ -66,7 +55,7 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### The Score
 
-Each track gets a **Weighted Score** based on:
+Each track gets a **Weighted Score** based on which curators added it and how good those curators' track records are:
 
 | Factor | Weight | Description |
 |--------|--------|-------------|
@@ -76,33 +65,27 @@ Each track gets a **Weighted Score** based on:
 
 ### The Feed
 
-The site polls tracked playlists on a schedule, diffs the track lists, and records new adds. A track enters the chart when it gets adds from enough tracked playlists in the rolling time window. It ages off when adds stop.
+A cron job (`/api/cron/poll`) runs every 6 hours, diffs each approved curator's playlist, and records new adds to `track_adds`. Tracks rise on the chart when multiple curators add them within a rolling time window.
 
 ### Architecture
 
 ```
-Browser → /api/playlist (Next.js API route)
-               ↓
-        Spotify Token (server-side, credentials never exposed)
-               ↓
-        Spotify REST API → playlist + tracks
-               ↓
-        Enriched JSON → React UI
+Vercel Cron (6h)
+  → /api/cron/poll
+  → Spotify API: fetch each curator's playlist
+  → Diff against known track_adds
+  → INSERT new adds → Neon Postgres
+  → Recompute curator scores
+
+Browser → / (chart, 24h/72h/7d windows)
+       → /curators (leaderboard + submission)
+       → /track/[id] (detail + velocity)
+         ↓
+       /api/chart, /api/curators, /api/tracks/[id]
+         ↓
+       Neon Postgres
 ```
 
----
+## Claude Code / MCP
 
-## Roadmap
-
-- [ ] Curator leaderboard (ranked by Track Record Score)
-- [ ] Genre filtering
-- [ ] Curator submission flow
-- [ ] Time-window charts (24h / 72h / 7d)
-- [ ] Email/RSS alerts for new chart entries
-- [ ] Spotify OAuth for personal playlist analysis
-
----
-
-## Contributing
-
-PRs welcome. Open an issue first for big changes.
+This project is configured for Claude Code with Spotify and Vercel MCP servers — see `.claude/settings.json` and `CLAUDE.md`.
