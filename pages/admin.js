@@ -98,7 +98,7 @@ export default function Admin() {
       if (!r1.ok) { log(`Seed failed: ${d1.error}`, false); setSetupRunning(false); return; }
       log(`Curators seeded — ${d1.inserted} new, ${d1.skipped} already existed`, true);
 
-      log("Searching Spotify for tracks (17 queries, ~60s)...");
+      log("Searching Spotify for indie tracks (8 queries)...");
       const r2 = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
       const d2 = await r2.json();
       if (d2.tracksFound === 0 && d2.errors?.some(e => e.error)) {

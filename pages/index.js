@@ -1,20 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Head from "next/head";
 import Link from "next/link";
 import { useRouter } from "next/router";
-
-const GENRES = [
-  { id: "all", label: "All" },
-  { id: "rock", label: "Rock" },
-  { id: "pop", label: "Pop" },
-  { id: "alternative", label: "Alternative" },
-  { id: "rap", label: "Rap" },
-  { id: "metal", label: "Metal" },
-  { id: "hardcore", label: "Hardcore" },
-  { id: "punk", label: "Punk" },
-  { id: "electronic", label: "Electronic" },
-  { id: "dance", label: "Dance" },
-];
 
 const VOTE_STORAGE_KEY = "pm_voted_tracks";
 
@@ -264,19 +251,14 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
-  const genreBarRef = useRef(null);
 
-  // Read genre + page from URL
-  const genre = (router.query.genre || "all").toLowerCase();
   const page = Math.max(1, parseInt(router.query.page || "1", 10));
 
-  const validGenre = GENRES.find((g) => g.id === genre) ? genre : "all";
-
-  const loadChart = useCallback(async (g, p) => {
+  const loadChart = useCallback(async (p) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/charts?genre=${g}&page=${p}`);
+      const res = await fetch(`/api/charts?page=${p}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load chart");
       setTracks(data.tracks);
@@ -290,21 +272,19 @@ export default function Home() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    loadChart(validGenre, page);
-  }, [validGenre, page, router.isReady, loadChart]);
+    loadChart(page);
+  }, [page, router.isReady, loadChart]);
 
-  const navigate = (newGenre, newPage) => {
-    const query = {};
-    if (newGenre && newGenre !== "all") query.genre = newGenre;
-    if (newPage > 1) query.page = newPage;
+  const navigate = (newPage) => {
+    const query = newPage > 1 ? { page: newPage } : {};
     router.push({ pathname: "/", query }, undefined, { shallow: true });
   };
 
   return (
     <>
       <Head>
-        <title>Playlist Machine — Emerging Music</title>
-        <meta name="description" content="Daily-updated chart of emerging tracks, ranked by Spotify signals and community votes." />
+        <title>Playlist Machine — Emerging Indie</title>
+        <meta name="description" content="Daily-updated chart of emerging indie tracks, ranked by Spotify signals and community votes." />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -345,38 +325,20 @@ export default function Home() {
         </nav>
 
         <div style={{ position: "relative", zIndex: 1 }}>
-          {/* Genre tabs */}
-          <div
-            ref={genreBarRef}
-            style={{
-              display: "flex", alignItems: "center", gap: 0,
-              overflowX: "auto", scrollbarWidth: "none",
-              borderBottom: "1px solid var(--border)",
-              background: "var(--surface)",
-              position: "sticky", top: 54, zIndex: 99,
-            }}
-          >
-            <style>{`.genre-bar::-webkit-scrollbar { display: none; }`}</style>
-            {GENRES.map((g) => (
-              <button
-                key={g.id}
-                onClick={() => navigate(g.id, 1)}
-                style={{
-                  background: "none", border: "none", cursor: "pointer",
-                  padding: "10px 14px", fontSize: 10, whiteSpace: "nowrap",
-                  letterSpacing: "0.08em", textTransform: "uppercase",
-                  color: validGenre === g.id ? "var(--text)" : "var(--muted)",
-                  borderBottom: validGenre === g.id ? "2px solid var(--accent)" : "2px solid transparent",
-                  transition: "color 0.1s",
-                  flexShrink: 0,
-                }}
-              >
-                {g.label}
-              </button>
-            ))}
+          {/* Chart header */}
+          <div style={{
+            display: "flex", alignItems: "center",
+            borderBottom: "1px solid var(--border)",
+            background: "var(--surface)",
+            padding: "0 16px", height: 38,
+            position: "sticky", top: 54, zIndex: 99,
+          }}>
+            <span style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent)" }}>
+              Emerging Indie
+            </span>
             <div style={{ flex: 1 }} />
             {meta.total > 0 && (
-              <span style={{ fontSize: 9, color: "var(--faint)", padding: "0 16px", whiteSpace: "nowrap" }}>
+              <span style={{ fontSize: 9, color: "var(--faint)" }}>
                 {meta.total} tracks
               </span>
             )}
@@ -404,12 +366,10 @@ export default function Home() {
           {!loading && !error && tracks.length === 0 && (
             <div style={{ padding: "100px 16px", textAlign: "center" }}>
               <div style={{ fontFamily: "Georgia, serif", fontSize: 28, color: "var(--surface2)", marginBottom: 16 }}>
-                {validGenre === "all" ? "Chart loading" : `No ${GENRES.find(g => g.id === validGenre)?.label} tracks yet`}
+                Chart loading
               </div>
               <div style={{ fontSize: 11, color: "var(--faint)", lineHeight: 1.8 }}>
-                {validGenre === "all"
-                  ? "Tracks appear here after the system polls curator playlists."
-                  : "Genre classification runs after the next poll cycle."}
+                Tracks appear here after the next poll cycle.
               </div>
             </div>
           )}
@@ -429,7 +389,7 @@ export default function Home() {
             <Pagination
               page={page}
               totalPages={meta.totalPages}
-              onPage={(p) => navigate(validGenre, p)}
+              onPage={(p) => navigate(p)}
             />
           )}
         </div>
@@ -443,7 +403,7 @@ export default function Home() {
         }}>
           <span>PLAYLIST MACHINE</span>
           <span>Ranking: 50% popularity · 35% growth · 15% votes</span>
-          <span>Powered by Spotify Web API</span>
+          <span>Indie · updated every 6h</span>
         </footer>
       </div>
     </>
