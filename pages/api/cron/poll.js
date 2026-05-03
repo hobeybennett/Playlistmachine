@@ -47,15 +47,14 @@ export default async function handler(req, res) {
       try {
         const tracks = await searchTracks(query, 50);
         results.queriesRun++;
+        let newForQuery = 0;
         for (const t of tracks) {
-          if (!seen.has(t.id)) {
-            seen.add(t.id);
-            allTracks.push(t);
-          }
+          if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); newForQuery++; }
         }
-        // Small delay to stay within Spotify's rolling rate limit window
+        results.errors.push({ query, found: tracks.length, new: newForQuery });
         await new Promise((r) => setTimeout(r, 200));
       } catch (err) {
+        results.queriesRun++;
         results.errors.push({ query, error: err.message });
       }
     }
