@@ -43,37 +43,20 @@ export default async function handler(req, res) {
     const seen = new Set();
     const allTracks = [];
 
-    const LIMIT = 10;
-    const OFFSETS = [0, 10, 20, 30];
-
     for (const query of SEARCH_QUERIES) {
-      let foundForQuery = 0;
-      let newForQuery = 0;
-      let queryError = null;
-
-      for (const offset of OFFSETS) {
-        try {
-          const tracks = await searchTracks(query, LIMIT, offset);
-          results.queriesRun++;
-          foundForQuery += tracks.length;
-          for (const t of tracks) {
-            if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); newForQuery++; }
-          }
-          if (tracks.length < LIMIT) break; // no more pages
-          await new Promise((r) => setTimeout(r, 150));
-        } catch (err) {
-          results.queriesRun++;
-          queryError = err.message;
-          break;
+      try {
+        const tracks = await searchTracks(query, 10);
+        results.queriesRun++;
+        let newForQuery = 0;
+        for (const t of tracks) {
+          if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); newForQuery++; }
         }
+        results.errors.push({ query, found: tracks.length, new: newForQuery });
+        await new Promise((r) => setTimeout(r, 100));
+      } catch (err) {
+        results.queriesRun++;
+        results.errors.push({ query, error: err.message });
       }
-
-      if (queryError) {
-        results.errors.push({ query, error: queryError });
-      } else {
-        results.errors.push({ query, found: foundForQuery, new: newForQuery });
-      }
-      await new Promise((r) => setTimeout(r, 150));
     }
 
     results.tracksFound = allTracks.length;

@@ -4,5 +4,9 @@
       "path": "/api/cron/poll",
       "schedule": "0 */6 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "pages/api/cron/poll.js": { "maxDuration": 60 },
+    "pages/api/admin/jobs/refresh-spotify.js": { "maxDuration": 60 }
+  }
 }
