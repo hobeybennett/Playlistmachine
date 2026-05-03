@@ -69,34 +69,38 @@ export default async function handler(req, res) {
       fail("spotify_me", e.message);
     }
 
-    // ── Playlist metadata (no tracks) ──────────────────────────────────────────
-    const testPlaylistId = "37i9dQZF1DX4JAvHpjipBk";
+    // ── /me/playlists — confirms playlist-read-private scope is active ─────────
     try {
-      const { status, body } = await spotifyGet(token, `/playlists/${testPlaylistId}?fields=id,name,tracks.total`);
+      const { status, body } = await spotifyGet(token, "/me/playlists?limit=1");
       if (status === 200) {
         const d = JSON.parse(body);
-        pass("playlist_metadata", `"${d.name}" — ${d.tracks?.total} tracks`);
+        pass("spotify_scope_playlist", `playlist-read-private confirmed (${d.total} playlists)`);
       } else {
-        fail("playlist_metadata", `HTTP ${status}: ${body.slice(0, 150)}`);
+        fail("spotify_scope_playlist", `HTTP ${status}: ${body.slice(0, 150)} — token may be missing playlist-read-private scope`);
       }
     } catch (e) {
-      fail("playlist_metadata", e.message);
+      fail("spotify_scope_playlist", e.message);
     }
 
-    // ── Playlist tracks ────────────────────────────────────────────────────────
+    // ── Curator playlist metadata (is the playlist public/accessible?) ─────────
     try {
-      const { status, body } = await spotifyGet(token, `/playlists/${testPlaylistId}/tracks?limit=3`);
-      if (status === 200) {
-        const d = JSON.parse(body);
-        pass("playlist_tracks", `${d.items?.length ?? 0} items returned`);
-      } else {
-        fail("playlist_tracks", `HTTP ${status}: ${body.slice(0, 200)}`);
+      const { rows: [curator] } = await sql`
+        SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
+      `;
+      if (curator) {
+        const { status, body } = await spotifyGet(token, `/playlists/${curator.spotify_playlist_id}?fields=id,name,public,followers.total`);
+        if (status === 200) {
+          const d = JSON.parse(body);
+          pass("curator_metadata", `"${d.name}" public=${d.public} followers=${d.followers?.total}`);
+        } else {
+          fail("curator_metadata", `curator ${curator.id} HTTP ${status}: ${body.slice(0, 150)}`);
+        }
       }
     } catch (e) {
-      fail("playlist_tracks", e.message);
+      fail("curator_metadata", e.message);
     }
 
-    // ── First curator playlist tracks (real curator, not editorial) ────────────
+    // ── Curator playlist tracks ────────────────────────────────────────────────
     try {
       const { rows: [curator] } = await sql`
         SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
