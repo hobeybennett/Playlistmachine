@@ -34,17 +34,17 @@ export default async function handler(req, res) {
     const seen = new Set();
     const allTracks = [];
 
-    for (const query of SEARCH_QUERIES) {
-      try {
-        const tracks = await searchTracks(query, 10);
-        results.queriesRun++;
-        for (const t of tracks) {
+    const searchResults = await Promise.allSettled(
+      SEARCH_QUERIES.map((query) => searchTracks(query, 10).then((tracks) => ({ query, tracks })))
+    );
+    for (const result of searchResults) {
+      results.queriesRun++;
+      if (result.status === "fulfilled") {
+        for (const t of result.value.tracks) {
           if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); }
         }
-        await new Promise((r) => setTimeout(r, 100));
-      } catch (err) {
-        results.queriesRun++;
-        results.errors.push({ query, error: err.message });
+      } else {
+        results.errors.push({ query: result.reason?.message });
       }
     }
 
@@ -52,7 +52,9 @@ export default async function handler(req, res) {
     results.newTracksIngested = await ingestTrackObjects(allTracks);
     results.popularityRefreshed = await refreshTrackPopularities();
     results.snapshotsTaken = await takeDailySnapshots();
-    await recomputeAllTrackScores();
+    try { await recomputeAllTrackScores(); } catch (err) {
+      results.errors.push({ step: "recompute", error: err.message });
+    }
 
     return res.status(200).json({ ok: results.errors.length === 0, ...results });
   } catch (err) {

@@ -39,23 +39,26 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ── Step 1: Search for tracks across genre queries ────────────────────────
+    // ── Step 1: Search for tracks across genre queries (parallel) ─────────────
     const seen = new Set();
     const allTracks = [];
 
-    for (const query of SEARCH_QUERIES) {
-      try {
-        const tracks = await searchTracks(query, 10);
-        results.queriesRun++;
+    const searchResults = await Promise.allSettled(
+      SEARCH_QUERIES.map((query) => searchTracks(query, 10).then((tracks) => ({ query, tracks })))
+    );
+
+    for (const result of searchResults) {
+      results.queriesRun++;
+      if (result.status === "fulfilled") {
+        const { query, tracks } = result.value;
         let newForQuery = 0;
         for (const t of tracks) {
           if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); newForQuery++; }
         }
         results.errors.push({ query, found: tracks.length, new: newForQuery });
-        await new Promise((r) => setTimeout(r, 100));
-      } catch (err) {
-        results.queriesRun++;
-        results.errors.push({ query, error: err.message });
+      } else {
+        const query = SEARCH_QUERIES[searchResults.indexOf(result)];
+        results.errors.push({ query, error: result.reason?.message });
       }
     }
 
@@ -83,7 +86,11 @@ export default async function handler(req, res) {
     }
 
     // ── Step 5: Recompute scores ──────────────────────────────────────────────
-    await recomputeAllTrackScores();
+    try {
+      await recomputeAllTrackScores();
+    } catch (err) {
+      results.errors.push({ step: "recompute", error: err.message });
+    }
 
     return res.status(200).json({ ok: results.errors.length === 0, ...results });
   } catch (err) {
