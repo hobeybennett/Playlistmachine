@@ -12,7 +12,7 @@ const inputStyle = {
 const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 };
 const label9 = (t) => <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>{t}</div>;
 
-function ResultBox({ result }) {
+function ResultBox({ result, onCopy }) {
   if (!result) return null;
   return (
     <div style={{
@@ -20,6 +20,13 @@ function ResultBox({ result }) {
       background: result.ok ? "rgba(184,240,80,0.07)" : "rgba(255,85,85,0.07)",
       border: `1px solid ${result.ok ? "var(--accent)" : "#ff5555"}`,
     }}>
+      {onCopy && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+          <button onClick={() => onCopy(result.data)} style={{ fontSize: 9, padding: "3px 10px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)", borderRadius: 2, cursor: "pointer", letterSpacing: "0.05em" }}>
+            Copy JSON
+          </button>
+        </div>
+      )}
       <pre style={{ margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-word", color: result.ok ? "var(--text)" : "#ff8888" }}>
         {JSON.stringify(result.data, null, 2)}
       </pre>
@@ -48,6 +55,7 @@ export default function Admin() {
   const [scoreTrackId, setScoreTrackId] = useState("");
   const [scoreResult, setScoreResult] = useState(null);
   const [testResult, setTestResult] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     try {
@@ -153,6 +161,14 @@ export default function Admin() {
     } catch (e) { setTestResult(e.message); }
   };
 
+  const copyJSON = (data) => {
+    try {
+      navigator.clipboard.writeText(JSON.stringify(data, null, 2));
+      setToast("Copied!");
+      setTimeout(() => setToast(null), 2000);
+    } catch { setToast("Copy failed"); setTimeout(() => setToast(null), 2000); }
+  };
+
   const handleScoreLookup = async () => {
     if (!scoreTrackId.trim()) return;
     try {
@@ -165,6 +181,18 @@ export default function Admin() {
     <>
       <Head><title>Admin — Playlist Machine</title></Head>
 
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
+          background: "var(--accent)", color: "#000",
+          padding: "10px 20px", borderRadius: 4,
+          fontSize: 12, fontWeight: 700, letterSpacing: "0.05em",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          animation: "fadeIn 0.15s ease",
+        }}>
+          {toast}
+        </div>
+      )}
       <div style={{ minHeight: "100vh" }}>
         <nav style={{
           position: "sticky", top: 0, zIndex: 100,
@@ -243,6 +271,9 @@ export default function Admin() {
 
             {setupLog.length > 0 && (
               <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button onClick={() => copyJSON(setupLog)} style={{ fontSize: 9, padding: "3px 10px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)", borderRadius: 2, cursor: "pointer", letterSpacing: "0.05em" }}>Copy JSON</button>
+                </div>
                 {setupLog.map((entry, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, fontSize: 11, alignItems: "flex-start" }}>
                     <span style={{
@@ -316,7 +347,7 @@ export default function Admin() {
                   >
                     {label}
                   </button>
-                  {result && <ResultBox result={result} />}
+                  {result && <ResultBox result={result} onCopy={copyJSON} />}
                 </div>
               ))}
             </div>

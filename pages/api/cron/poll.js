@@ -45,7 +45,7 @@ export default async function handler(req, res) {
 
     for (const query of SEARCH_QUERIES) {
       try {
-        const tracks = await searchTracks(query, 50);
+        const tracks = await searchTracks(query, 20);
         results.queriesRun++;
         let newForQuery = 0;
         for (const t of tracks) {
