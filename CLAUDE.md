@@ -9,7 +9,6 @@ A Next.js app that tracks emerging music by monitoring Spotify playlist curators
 This project is configured with two MCP servers in `.claude/settings.json`:
 
 - **Spotify** (`https://mcp.spotify.com/sse`) — search playlists, get currently playing, create playlists
-- **Vercel** (`https://mcp.vercel.com/sse`) — list deployments, check logs, deploy
 
 ### Using Spotify MCP to find curators
 
@@ -36,7 +35,7 @@ Playlists with 100+ followers are auto-approved and tracked from the next cron c
 
 ## Environment variables
 
-See `.env.example` for all required vars. Set them in Vercel dashboard or a local `.env.local`.
+See `.env.example` for all required vars. Set them in the Railway dashboard under Variables.
 
 ## Database
 
@@ -50,4 +49,4 @@ Creates tables: `curators`, `snapshots`, `snapshot_tracks`, `track_adds`.
 
 ## Cron
 
-`vercel.json` schedules `/api/cron/poll` every 6 hours. Authenticated via `Authorization: Bearer $CRON_SECRET` header set by Vercel.
+Set up a Railway cron service to hit `/api/cron/poll` every 6 hours with header `Authorization: Bearer $CRON_SECRET`.
