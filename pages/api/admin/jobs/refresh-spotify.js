@@ -3,9 +3,8 @@ import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from
 import { recomputeAllTrackScores } from "../../../../lib/ranking.js";
 
 const SEARCH_QUERIES = [
-  "tag:new year:2025",
-  "tag:new year:2024",
   "year:2025",
+  "year:2024",
   "indie rock 2025",
   "electronic dance 2025",
   "hip hop rap 2025",

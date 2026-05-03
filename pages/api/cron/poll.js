@@ -5,9 +5,8 @@ import { recomputeAllTrackScores } from "../../../lib/ranking.js";
 // Spotify search queries that work without Extended Quota.
 // Genre filters don't apply to track search, so we use descriptive terms + year tags.
 const SEARCH_QUERIES = [
-  "tag:new year:2025",
-  "tag:new year:2024",
   "year:2025",
+  "year:2024",
   "indie rock 2025",
   "electronic dance 2025",
   "hip hop rap 2025",
