@@ -34,17 +34,28 @@ export default async function handler(req, res) {
     const seen = new Set();
     const allTracks = [];
 
+    const LIMIT = 10;
+    const OFFSETS = [0, 10, 20, 30];
+
     for (const query of SEARCH_QUERIES) {
-      try {
-        const tracks = await searchTracks(query, 20);
-        results.queriesRun++;
-        for (const t of tracks) {
-          if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); }
+      let queryError = null;
+      for (const offset of OFFSETS) {
+        try {
+          const tracks = await searchTracks(query, LIMIT, offset);
+          results.queriesRun++;
+          for (const t of tracks) {
+            if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); }
+          }
+          if (tracks.length < LIMIT) break;
+          await new Promise((r) => setTimeout(r, 150));
+        } catch (err) {
+          results.queriesRun++;
+          queryError = err.message;
+          break;
         }
-        await new Promise((r) => setTimeout(r, 200));
-      } catch (err) {
-        results.errors.push({ query, error: err.message });
       }
+      if (queryError) results.errors.push({ query, error: queryError });
+      await new Promise((r) => setTimeout(r, 150));
     }
 
     results.tracksFound = allTracks.length;
