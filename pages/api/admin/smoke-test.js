@@ -100,22 +100,23 @@ export default async function handler(req, res) {
       fail("curator_metadata", e.message);
     }
 
-    // ── Curator playlist tracks ────────────────────────────────────────────────
+    // ── Curator tracks via metadata endpoint (the workaround) ────────────────
     try {
       const { rows: [curator] } = await sql`
         SELECT id, spotify_playlist_id FROM curators WHERE status='approved' LIMIT 1
       `;
       if (curator) {
-        const { status, body } = await spotifyGet(token, `/playlists/${curator.spotify_playlist_id}/tracks?limit=3`);
+        const fields = "tracks(items(track(id,name)),total)";
+        const { status, body } = await spotifyGet(token, `/playlists/${curator.spotify_playlist_id}?fields=${encodeURIComponent(fields)}`);
         if (status === 200) {
           const d = JSON.parse(body);
-          pass("curator_tracks", `curator ${curator.id}: ${d.items?.length ?? 0} tracks returned`);
+          pass("curator_tracks_via_metadata", `curator ${curator.id}: ${d.tracks?.items?.length ?? 0} tracks (${d.tracks?.total} total)`);
         } else {
-          fail("curator_tracks", `curator ${curator.id} HTTP ${status}: ${body.slice(0, 200)}`);
+          fail("curator_tracks_via_metadata", `curator ${curator.id} HTTP ${status}: ${body.slice(0, 200)}`);
         }
       }
     } catch (e) {
-      fail("curator_tracks", e.message);
+      fail("curator_tracks_via_metadata", e.message);
     }
   }
 
