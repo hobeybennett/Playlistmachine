@@ -157,6 +157,27 @@ export default function Admin() {
   const [searchTestRunning, setSearchTestRunning] = useState(false);
   const [pipelineTestResult, setPipelineTestResult] = useState(null);
   const [pipelineTestRunning, setPipelineTestRunning] = useState(false);
+  const [testDataResult, setTestDataResult] = useState(null);
+  const [testDataRunning, setTestDataRunning] = useState(false);
+
+  const handleSeedTestData = async () => {
+    setTestDataRunning(true); setTestDataResult(null);
+    try {
+      const r = await fetch("/api/admin/seed-test-data", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
+      setTestDataResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setTestDataResult({ ok: false, data: { error: e.message } }); }
+    setTestDataRunning(false); loadStats();
+  };
+
+  const handleClearTestData = async () => {
+    if (!confirm("Delete all test_ tracks from the DB?")) return;
+    setTestDataRunning(true); setTestDataResult(null);
+    try {
+      const r = await fetch("/api/admin/clear-test-data", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
+      setTestDataResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setTestDataResult({ ok: false, data: { error: e.message } }); }
+    setTestDataRunning(false); loadStats();
+  };
 
   const handleSearchTest = async () => {
     setSearchTestRunning(true); setSearchTestResult(null);
@@ -314,6 +335,31 @@ export default function Admin() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* Test Data */}
+          <div style={card}>
+            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 6 }}>// Test Data</div>
+            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.6 }}>
+              Seed 50 fake tracks (prefixed <code style={{ background: "var(--surface2)", padding: "1px 5px", borderRadius: 2 }}>test_</code>) across all genres with varied scores. Clear them when done.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleSeedTestData}
+                disabled={!secret || testDataRunning}
+                style={{ padding: "10px 16px", background: "var(--accent)", border: "none", color: "#000", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: (!secret || testDataRunning) ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: (!secret || testDataRunning) ? 0.5 : 1 }}
+              >
+                {testDataRunning ? "Working..." : "Seed Test Tracks"}
+              </button>
+              <button
+                onClick={handleClearTestData}
+                disabled={!secret || testDataRunning}
+                style={{ padding: "10px 16px", background: "none", border: "1px solid #ff5555", color: "#ff8888", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: (!secret || testDataRunning) ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: (!secret || testDataRunning) ? 0.5 : 1 }}
+              >
+                Clear Test Tracks
+              </button>
+            </div>
+            {testDataResult && <ResultBox result={testDataResult} onCopy={() => copyJSON(testDataResult.data)} />}
           </div>
 
           {/* Connect Spotify */}
