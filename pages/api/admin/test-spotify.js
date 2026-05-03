@@ -1,72 +1,55 @@
 import { getSpotifyToken } from "../../../lib/spotify.js";
-import { getSetting } from "../../../lib/db.js";
 
-async function getTestToken() {
-  const refreshToken = process.env.SPOTIFY_REFRESH_TOKEN || await getSetting("spotify_refresh_token");
-  if (refreshToken) {
-    const credentials = Buffer.from(
-      `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
-    ).toString("base64");
-    const res = await fetch("https://accounts.spotify.com/api/token", {
-      method: "POST",
-      headers: {
-        Authorization: `Basic ${credentials}`,
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}`,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return { token: data.access_token, type: "user_oauth" };
-    }
-  }
-  const token = await getSpotifyToken();
-  return { token, type: "client_credentials" };
-}
-
+// Tests whether Spotify returns embedded tracks via the playlist metadata endpoint.
+// Uses a real curator from the seed list (Synth Pop Sugar, 62k followers).
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const testPlaylistId = "37i9dQZF1DX4JAvHpjipBk"; // New Music Friday
+  const playlistId = "1K4EjTQOh9ko8ek0PFAT3Q"; // Synth Pop Sugar — 62k followers, confirmed public
 
   try {
-    const { token, type } = await getTestToken();
+    const token = await getSpotifyToken();
 
-    // Sequential requests to minimise rate-limit pressure during diagnostics
-    const r1 = await fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Test 1: metadata endpoint — does it return tracks?
+    const r1 = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistId}?market=AU`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const playlistBody = await r1.text();
+    let tracksEmbedded = null;
+    let tracksTotal = null;
+    if (r1.status === 200) {
+      try {
+        const d = JSON.parse(playlistBody);
+        tracksEmbedded = d.tracks?.items?.length ?? null;
+        tracksTotal = d.tracks?.total ?? null;
+      } catch {}
+    }
 
-    const r2 = await fetch(`https://api.spotify.com/v1/playlists/${testPlaylistId}/tracks?limit=3`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // Test 2: /tracks sub-endpoint — still 403?
+    const r2 = await fetch(
+      `https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=1`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
     const tracksBody = await r2.text();
 
-    // Fetch the first real track from the playlist (no hardcoded ID, no market param)
-    let trackStatus = null;
-    let trackBody = null;
-    try {
-      const firstTrackId = JSON.parse(tracksBody)?.items?.[0]?.track?.id;
-      if (firstTrackId) {
-        const r3 = await fetch(`https://api.spotify.com/v1/tracks/${firstTrackId}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        trackStatus = r3.status;
-        trackBody = (await r3.text()).slice(0, 300);
-      }
-    } catch {}
+    // Test 3: single track lookup (sanity check for token)
+    const r3 = await fetch(
+      `https://api.spotify.com/v1/tracks/3n3Ppam7vgaVa1iaRUIOKE?market=AU`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    const trackBody = await r3.text();
 
     return res.status(200).json({
-      tokenType: type,
-      playlistStatus: r1.status,
-      playlistBody: playlistBody.slice(0, 600),
-      tracksStatus: r2.status,
-      tracksBody: tracksBody.slice(0, 400),
-      trackStatus,
-      trackBody,
+      metadataStatus: r1.status,
+      tracksEmbeddedInMetadata: tracksEmbedded,
+      tracksTotal,
+      metadataSample: playlistBody.slice(0, 600),
+      tracksEndpointStatus: r2.status,
+      tracksEndpointBody: tracksBody.slice(0, 300),
+      trackLookupStatus: r3.status,
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
