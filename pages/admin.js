@@ -153,6 +153,18 @@ export default function Admin() {
     } catch {}
   };
 
+  const [searchTestResult, setSearchTestResult] = useState(null);
+  const [searchTestRunning, setSearchTestRunning] = useState(false);
+
+  const handleSearchTest = async () => {
+    setSearchTestRunning(true); setSearchTestResult(null);
+    try {
+      const r = await fetch("/api/admin/test-search", { headers: { Authorization: `Bearer ${secret}` } });
+      setSearchTestResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setSearchTestResult({ ok: false, data: { error: e.message } }); }
+    setSearchTestRunning(false);
+  };
+
   const handleTest = async () => {
     setTestResult("loading...");
     try {
@@ -377,13 +389,23 @@ export default function Admin() {
           {/* Diagnostics */}
           <div style={card}>
             <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 14 }}>// Diagnostics</div>
-            <button
-              onClick={handleTest}
-              disabled={!secret}
-              style={{ padding: "10px 16px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: !secret ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: !secret ? 0.5 : 1 }}
-            >
-              Test Spotify API
-            </button>
+            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <button
+                onClick={handleSearchTest}
+                disabled={!secret || searchTestRunning}
+                style={{ padding: "10px 16px", background: "var(--accent)", border: "none", color: "#000", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: (!secret || searchTestRunning) ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: (!secret || searchTestRunning) ? 0.5 : 1 }}
+              >
+                {searchTestRunning ? "Testing..." : "Test Single Search"}
+              </button>
+              <button
+                onClick={handleTest}
+                disabled={!secret}
+                style={{ padding: "10px 16px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: !secret ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: !secret ? 0.5 : 1 }}
+              >
+                Test Spotify API
+              </button>
+            </div>
+            {searchTestResult && <ResultBox result={searchTestResult} onCopy={() => copyJSON(searchTestResult.data)} />}
             {testResult && (
               <pre style={{ marginTop: 12, fontSize: 9, color: "var(--muted)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface2)", padding: 12, borderRadius: 3 }}>
                 {testResult}
