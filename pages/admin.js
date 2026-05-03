@@ -155,6 +155,8 @@ export default function Admin() {
 
   const [searchTestResult, setSearchTestResult] = useState(null);
   const [searchTestRunning, setSearchTestRunning] = useState(false);
+  const [pipelineTestResult, setPipelineTestResult] = useState(null);
+  const [pipelineTestRunning, setPipelineTestRunning] = useState(false);
 
   const handleSearchTest = async () => {
     setSearchTestRunning(true); setSearchTestResult(null);
@@ -163,6 +165,15 @@ export default function Admin() {
       setSearchTestResult({ ok: r.ok, data: await r.json() });
     } catch (e) { setSearchTestResult({ ok: false, data: { error: e.message } }); }
     setSearchTestRunning(false);
+  };
+
+  const handlePipelineTest = async () => {
+    setPipelineTestRunning(true); setPipelineTestResult(null);
+    try {
+      const r = await fetch("/api/admin/test-pipeline", { headers: { Authorization: `Bearer ${secret}` } });
+      setPipelineTestResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setPipelineTestResult({ ok: false, data: { error: e.message } }); }
+    setPipelineTestRunning(false);
   };
 
   const handleTest = async () => {
@@ -406,6 +417,18 @@ export default function Admin() {
               </button>
             </div>
             {searchTestResult && <ResultBox result={searchTestResult} onCopy={() => copyJSON(searchTestResult.data)} />}
+
+            <div style={{ marginTop: 8 }}>
+              <button
+                onClick={handlePipelineTest}
+                disabled={!secret || pipelineTestRunning}
+                style={{ padding: "10px 16px", background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: (!secret || pipelineTestRunning) ? "default" : "pointer", letterSpacing: "0.06em", textTransform: "uppercase", opacity: (!secret || pipelineTestRunning) ? 0.5 : 1 }}
+              >
+                {pipelineTestRunning ? "Testing..." : "Test DB Pipeline (mock tracks)"}
+              </button>
+              {pipelineTestResult && <ResultBox result={pipelineTestResult} onCopy={() => copyJSON(pipelineTestResult.data)} />}
+            </div>
+
             {testResult && (
               <pre style={{ marginTop: 12, fontSize: 9, color: "var(--muted)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface2)", padding: 12, borderRadius: 3 }}>
                 {testResult}
