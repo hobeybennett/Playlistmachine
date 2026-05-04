@@ -8,7 +8,10 @@ export default async function handler(req, res) {
 
   try {
     const { rows } = await sql`
-      DELETE FROM tracks WHERE spotify_track_id LIKE 'test_%'
+      DELETE FROM tracks
+      WHERE spotify_track_id LIKE 'test_%'
+         OR name LIKE 'Test Track%'
+         OR artists LIKE 'Mock Artist%'
       RETURNING id
     `;
     return res.status(200).json({ ok: true, deleted: rows.length });
