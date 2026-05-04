@@ -27,25 +27,30 @@ export default async function handler(req, res) {
     results.playlistName = data.name;
     results.tracksTotal = data.tracks?.total;
     results.itemsLength = data.tracks?.items?.length;
+    results.tracksKeys = data.tracks ? Object.keys(data.tracks) : null;
     results.firstItem = data.tracks?.items?.[0]
       ? { trackId: data.tracks.items[0].track?.id, trackName: data.tracks.items[0].track?.name, popularity: data.tracks.items[0].track?.popularity }
       : null;
+
+    // 3. Also try client credentials on same endpoint
+    try {
+      const clientToken = await getSpotifyToken();
+      const r2 = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+        headers: { Authorization: `Bearer ${clientToken}` },
+      });
+      results.clientStatus = r2.status;
+      const d2 = await r2.json();
+      results.clientTracksTotal = d2.tracks?.total;
+      results.clientItemsLength = d2.tracks?.items?.length;
+      results.clientFirstItem = d2.tracks?.items?.[0]
+        ? { trackId: d2.tracks.items[0].track?.id, trackName: d2.tracks.items[0].track?.name }
+        : null;
+    } catch (e2) {
+      results.clientError = e2.message;
+    }
   } catch (e) {
     results.userTokenOk = false;
     results.userTokenError = e.message;
-
-    // 3. Fallback: try client creds
-    try {
-      const clientToken = await getSpotifyToken();
-      const r = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
-        headers: { Authorization: `Bearer ${clientToken}` },
-      });
-      results.clientCredsStatus = r.status;
-      const data = await r.json();
-      results.clientItemsLength = data.tracks?.items?.length;
-    } catch (e2) {
-      results.clientCredsError = e2.message;
-    }
   }
 
   return res.status(200).json(results);
