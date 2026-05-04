@@ -24,6 +24,7 @@ export default async function handler(req, res) {
     newTracksIngested: 0,
     popularityRefreshed: 0,
     snapshotsTaken: 0,
+    queryStats: [],
     errors: [],
   };
 
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
         for (const t of tracks) {
           if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); newForQuery++; }
         }
-        results.errors.push({ query, found: tracks.length, new: newForQuery });
+        results.queryStats.push({ query, found: tracks.length, new: newForQuery });
       } else {
         const query = SEARCH_QUERIES[searchResults.indexOf(result)];
         results.errors.push({ query, error: result.reason?.message });

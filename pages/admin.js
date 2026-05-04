@@ -101,14 +101,15 @@ export default function Admin() {
       log("Searching Spotify for indie tracks (8 queries)...");
       const r2 = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
       const d2 = await r2.json();
-      if (d2.tracksFound === 0 && d2.errors?.some(e => e.error)) {
-        log(`Poll errors: ${JSON.stringify(d2.errors.filter(e => e.error).slice(0, 3))}`, false);
+      const pollErrors = d2.errors?.filter(e => e.error) || [];
+      if (d2.tracksFound === 0 && pollErrors.length) {
+        log(`Poll errors: ${JSON.stringify(pollErrors.slice(0, 3))}`, false);
       } else if (d2.tracksFound === 0) {
-        log(`Poll ran but found 0 tracks — check errors array`, false);
+        log(`Poll ran but found 0 tracks`, false);
       } else {
         log(`Found ${d2.tracksFound} tracks, ingested ${d2.newTracksIngested} new`, true);
       }
-      log(`Popularity refreshed: ${d2.popularityRefreshed}, snapshots: ${d2.snapshotsTaken}`, d2.ok);
+      log(`Popularity refreshed: ${d2.popularityRefreshed}, snapshots: ${d2.snapshotsTaken}`, pollErrors.length === 0);
 
       await loadStats(secret);
       setSetupDone(true);
