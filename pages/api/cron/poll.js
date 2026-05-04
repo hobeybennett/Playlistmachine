@@ -1,11 +1,19 @@
-import { getRecommendations } from "../../../lib/spotify.js";
+import { searchTracks } from "../../../lib/spotify.js";
 import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
 
-// Genre batches — each batch is one Recommendations API call (max 5 seeds each)
-const GENRE_BATCHES = [
-  ["indie", "indie-pop", "indie-rock", "singer-songwriter", "folk"],
-  ["dream-pop", "shoegaze", "lo-fi", "bedroom-pop", "alt-rock"],
+// Broad queries that return real tracks with actual Spotify popularity.
+// Genre-keyword searches ("indie 2025") return 0-popularity underground tracks.
+// Year + genre-tag searches hit tracks with established audience.
+const SEARCH_QUERIES = [
+  "year:2026",
+  "year:2025",
+  "genre:indie year:2026",
+  "genre:indie year:2025",
+  "genre:alternative year:2026",
+  "genre:alternative year:2025",
+  "new indie 2026",
+  "new indie 2025",
 ];
 
 export default async function handler(req, res) {
@@ -14,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   const results = {
-    batchesRun: 0,
+    queriesRun: 0,
     tracksFound: 0,
     newTracksIngested: 0,
     popularityRefreshed: 0,
@@ -24,28 +32,26 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ── Step 1: Fetch recommendations for each genre batch (parallel) ──────────
+    // ── Step 1: Search in parallel ────────────────────────────────────────────
     const seen = new Set();
     const allTracks = [];
 
-    const batchResults = await Promise.allSettled(
-      GENRE_BATCHES.map((genres) =>
-        getRecommendations({ seedGenres: genres, minPopularity: 20, limit: 100 })
-          .then((tracks) => ({ genres, tracks }))
+    const searchResults = await Promise.allSettled(
+      SEARCH_QUERIES.map((query) =>
+        searchTracks(query, 10).then((tracks) => ({ query, tracks }))
       )
     );
 
-    for (const result of batchResults) {
-      results.batchesRun++;
+    for (const result of searchResults) {
       if (result.status === "fulfilled") {
-        const { genres, tracks } = result.value;
+        const { query, tracks } = result.value;
         let added = 0;
         for (const t of tracks) {
           if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); added++; }
         }
-        results.queryStats.push({ genres: genres.join(","), found: tracks.length, added });
+        results.queryStats.push({ query, found: tracks.length, added });
       } else {
-        results.errors.push({ step: "recommendations", error: result.reason?.message });
+        results.errors.push({ step: "search", error: result.reason?.message });
       }
     }
 
