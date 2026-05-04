@@ -3,24 +3,14 @@ import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from
 import { recomputeAllTrackScores } from "../../../../lib/ranking.js";
 
 const SEARCH_QUERIES = [
-  "tag:new year:2025",
-  "tag:new year:2024",
-  "year:2025",
-  "indie rock 2025",
-  "electronic dance 2025",
-  "hip hop rap 2025",
-  "pop 2025",
-  "synthwave synthpop 2025",
-  "house techno 2025",
-  "metal hardcore 2025",
-  "punk alternative 2025",
-  "indie pop 2025",
-  "trap drill 2025",
-  "shoegaze dreampop 2025",
-  "edm festival 2025",
-  "rnb soul 2025",
-  "ambient downtempo 2025",
   "indie 2025",
+  "indie rock 2025",
+  "indie pop 2025",
+  "bedroom pop 2025",
+  "dream pop 2025",
+  "shoegaze 2025",
+  "indie folk 2025",
+  "lo-fi indie 2025",
 ];
 
 export default async function handler(req, res) {
@@ -35,16 +25,17 @@ export default async function handler(req, res) {
     const seen = new Set();
     const allTracks = [];
 
-    for (const query of SEARCH_QUERIES) {
-      try {
-        const tracks = await searchTracks(query, 50);
-        results.queriesRun++;
-        for (const t of tracks) {
+    const searchResults = await Promise.allSettled(
+      SEARCH_QUERIES.map((query) => searchTracks(query, 10).then((tracks) => ({ query, tracks })))
+    );
+    for (const result of searchResults) {
+      results.queriesRun++;
+      if (result.status === "fulfilled") {
+        for (const t of result.value.tracks) {
           if (!seen.has(t.id)) { seen.add(t.id); allTracks.push(t); }
         }
-        await new Promise((r) => setTimeout(r, 200));
-      } catch (err) {
-        results.errors.push({ query, error: err.message });
+      } else {
+        results.errors.push({ query: result.reason?.message });
       }
     }
 
@@ -52,7 +43,9 @@ export default async function handler(req, res) {
     results.newTracksIngested = await ingestTrackObjects(allTracks);
     results.popularityRefreshed = await refreshTrackPopularities();
     results.snapshotsTaken = await takeDailySnapshots();
-    await recomputeAllTrackScores();
+    try { await recomputeAllTrackScores(); } catch (err) {
+      results.errors.push({ step: "recompute", error: err.message });
+    }
 
     return res.status(200).json({ ok: results.errors.length === 0, ...results });
   } catch (err) {

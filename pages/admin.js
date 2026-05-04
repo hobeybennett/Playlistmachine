@@ -2,176 +2,151 @@ import { useState, useEffect } from "react";
 import Head from "next/head";
 import Link from "next/link";
 
-const btn = (label, onClick, disabled, loading) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    style={{
-      width: "100%",
-      background: disabled ? "var(--surface2)" : "var(--accent)",
-      color: "#000", border: "none", fontSize: 11, fontWeight: 700,
-      padding: "12px 24px", cursor: disabled ? "default" : "pointer",
-      letterSpacing: "0.08em", textTransform: "uppercase", borderRadius: 3,
-      opacity: loading ? 0.6 : 1, marginTop: 8,
-    }}
-  >
-    {label}
-  </button>
-);
+const card = { background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 20 };
+const label9 = (t) => <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 8 }}>{t}</div>;
 
-const fieldLabel = (label) => (
-  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "var(--muted)", marginBottom: 6 }}>
-    {label}
-  </div>
-);
+const btn = (extra = {}) => ({
+  padding: "10px 16px", border: "none", borderRadius: 3,
+  fontSize: 11, fontWeight: 700, cursor: "pointer",
+  letterSpacing: "0.06em", textTransform: "uppercase",
+  transition: "opacity 0.15s",
+  ...extra,
+});
 
-const resultBox = (result) => result && (
-  <div style={{
-    marginTop: 16, padding: "14px 16px", borderRadius: 3, fontSize: 11,
-    background: result.ok ? "rgba(184,240,80,0.08)" : "rgba(255,85,85,0.08)",
-    border: `1px solid ${result.ok ? "var(--accent)" : "var(--hot)"}`,
-  }}>
-    {result.ok
-      ? <pre style={{ margin: 0, fontSize: 10, whiteSpace: "pre-wrap", color: "var(--text)" }}>{JSON.stringify(result.data, null, 2)}</pre>
-      : <span style={{ color: "#ff8888" }}>{result.data?.error || JSON.stringify(result.data)}</span>}
-  </div>
-);
-
-const inputStyle = {
-  width: "100%", boxSizing: "border-box",
-  background: "var(--surface2)", border: "1px solid var(--border2)",
-  color: "var(--text)", fontSize: 12, padding: "8px 14px",
-  borderRadius: 3, outline: "none",
-};
-
-const sectionHead = (tag, title) => (
-  <>
-    <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 8 }}>{tag}</div>
-    <h2 style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>{title}</h2>
-  </>
-);
+function ResultBox({ result }) {
+  if (!result) return null;
+  const ok = result.ok !== false;
+  return (
+    <pre style={{
+      marginTop: 12, padding: "10px 12px", borderRadius: 3, fontSize: 10,
+      background: ok ? "rgba(184,240,80,0.06)" : "rgba(255,85,85,0.07)",
+      border: `1px solid ${ok ? "var(--accent)" : "#ff5555"}`,
+      color: ok ? "var(--text)" : "#ff8888",
+      whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
+    }}>
+      {JSON.stringify(result.data, null, 2)}
+    </pre>
+  );
+}
 
 export default function Admin() {
   const [secret, setSecret] = useState("");
-  const [minFollowers, setMinFollowers] = useState("1000");
-
   const [stats, setStats] = useState(null);
-  const [syncs, setSyncs] = useState(null);
-
-  const [testResult, setTestResult] = useState(null);
-  const [importRunning, setImportRunning] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-  const [refreshRunning, setRefreshRunning] = useState(false);
-  const [refreshResult, setRefreshResult] = useState(null);
-  const [syncRunning, setSyncRunning] = useState(false);
-  const [syncResult, setSyncResult] = useState(null);
+  const [toast, setToast] = useState(null);
   const [pollRunning, setPollRunning] = useState(false);
   const [pollResult, setPollResult] = useState(null);
+  const [setupRunning, setSetupRunning] = useState(false);
+  const [setupLog, setSetupLog] = useState([]);
+  const [nukeRunning, setNukeRunning] = useState(false);
+  const [nukeResult, setNukeResult] = useState(null);
+  const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
+  const [searchResult, setSearchResult] = useState(null);
+  const [playlistTestResult, setPlaylistTestResult] = useState(null);
 
-  const [scoreTrackId, setScoreTrackId] = useState("");
-  const [scoreResult, setScoreResult] = useState(null);
+  useEffect(() => {
+    try {
+      const s = localStorage.getItem("pm_admin_secret");
+      if (s) { setSecret(s); loadStats(s); }
+    } catch {}
+  }, []); // eslint-disable-line
 
   const loadStats = async (s = secret) => {
     if (!s) return;
     try {
-      const res = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
-      if (res.ok) setStats(await res.json());
+      const r = await fetch("/api/admin/stats", { headers: { Authorization: `Bearer ${s}` } });
+      if (r.ok) setStats(await r.json());
     } catch {}
   };
 
-  const loadSyncs = async (s = secret) => {
-    if (!s) return;
-    try {
-      const res = await fetch("/api/admin/playlist-syncs", { headers: { Authorization: `Bearer ${s}` } });
-      if (res.ok) setSyncs(await res.json());
-    } catch {}
-  };
-
-  const handleTest = async () => {
-    setTestResult("loading...");
-    try {
-      const res = await fetch("/api/admin/test-spotify", { headers: { Authorization: `Bearer ${secret}` } });
-      const data = await res.json();
-      setTestResult(JSON.stringify(data, null, 2));
-    } catch (e) { setTestResult(e.message); }
-  };
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2000); };
 
   const handlePoll = async () => {
     setPollRunning(true); setPollResult(null);
     try {
-      const res = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
-      const data = await res.json();
-      setPollResult({ ok: res.ok, data });
-    } catch { setPollResult({ ok: false, data: { error: "Network error" } }); }
+      const r = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
+      setPollResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setPollResult({ ok: false, data: { error: e.message } }); }
     setPollRunning(false); loadStats();
   };
 
-  const handleRefresh = async () => {
-    setRefreshRunning(true); setRefreshResult(null);
+  const handleSetup = async () => {
+    setSetupRunning(true); setSetupLog([]);
+    const log = (msg, ok = null) => setSetupLog((p) => [...p, { msg, ok }]);
     try {
-      const res = await fetch("/api/admin/jobs/refresh-spotify", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      const data = await res.json();
-      setRefreshResult({ ok: res.ok, data });
-    } catch { setRefreshResult({ ok: false, data: { error: "Network error" } }); }
-    setRefreshRunning(false); loadStats();
+      log("Seeding curators...");
+      const r1 = await fetch("/api/admin/seed-curators", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
+      const d1 = await r1.json();
+      if (!r1.ok) { log(`Seed failed: ${d1.error}`, false); setSetupRunning(false); return; }
+      log(`Curators seeded — ${d1.inserted} new, ${d1.skipped} existing`, true);
+
+      log("Polling curator playlists...");
+      const r2 = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
+      const d2 = await r2.json();
+      const errs = d2.errors || [];
+      if (d2.tracksFound === 0) {
+        const sample = errs.slice(0, 2).map(e => e.error || e.playlist || JSON.stringify(e)).join("; ");
+        log(`Poll found 0 tracks${sample ? ` — ${sample}` : ""}`, false);
+      } else {
+        log(`Found ${d2.tracksFound} tracks, ${d2.newTracksIngested} new ingested`, true);
+        log(`Snapshots: ${d2.snapshotsTaken}, track_adds: ${d2.trackAddsRecorded ?? 0}`, errs.length === 0);
+      }
+    } catch (e) { log(`Error: ${e.message}`, false); }
+    setSetupRunning(false); loadStats();
   };
 
-  const handleImport = async (e) => {
-    e.preventDefault();
-    setImportRunning(true); setImportResult(null);
+  const handleNuke = async () => {
+    if (!confirm("Delete ALL tracks, snapshots, votes and track_adds from the DB? This cannot be undone.")) return;
+    setNukeRunning(true); setNukeResult(null);
     try {
-      const res = await fetch("/api/admin/bulk-import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${secret}` },
-        body: JSON.stringify({ minFollowers: Number(minFollowers) }),
-      });
-      const data = await res.json();
-      setImportResult({ ok: res.ok, data });
-    } catch { setImportResult({ ok: false, data: { error: "Network error" } }); }
-    setImportRunning(false);
+      const r = await fetch("/api/admin/clear-all-tracks", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
+      setNukeResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setNukeResult({ ok: false, data: { error: e.message } }); }
+    setNukeRunning(false); loadStats();
   };
 
-  const handleSync = async () => {
-    setSyncRunning(true); setSyncResult(null);
+  const handleSpotifyAuth = async () => {
     try {
-      const res = await fetch("/api/admin/jobs/sync-playlists", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      const data = await res.json();
-      setSyncResult({ ok: res.ok, data });
-    } catch { setSyncResult({ ok: false, data: { error: "Network error" } }); }
-    setSyncRunning(false); loadSyncs();
+      const r = await fetch("/api/admin/spotify-auth", { headers: { Authorization: `Bearer ${secret}` } });
+      const d = await r.json();
+      if (d.authUrl) setSpotifyAuthUrl(d.authUrl);
+    } catch {}
   };
 
-  const handleScoreLookup = async () => {
-    if (!scoreTrackId.trim()) return;
+  const handleSearchTest = async () => {
+    setSearchResult(null);
     try {
-      const res = await fetch(`/api/admin/scoring/${scoreTrackId.trim()}`, {
-        headers: { Authorization: `Bearer ${secret}` },
-      });
-      const data = await res.json();
-      setScoreResult({ ok: res.ok, data });
-    } catch (e) { setScoreResult({ ok: false, data: { error: e.message } }); }
+      const r = await fetch("/api/admin/test-search", { headers: { Authorization: `Bearer ${secret}` } });
+      setSearchResult({ ok: r.ok, data: await r.json() });
+    } catch (e) { setSearchResult({ ok: false, data: { error: e.message } }); }
+  };
+
+  const handlePlaylistTest = async () => {
+    setPlaylistTestResult(null);
+    try {
+      const r = await fetch("/api/admin/test-playlist", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await r.json();
+      setPlaylistTestResult({ ok: data.userTokenOk && data.itemsLength > 0, data });
+    } catch (e) { setPlaylistTestResult({ ok: false, data: { error: e.message } }); }
   };
 
   return (
     <>
-      <Head>
-        <title>Admin — Playlist Machine</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-      </Head>
+      <Head><title>Admin — Playlist Machine</title></Head>
+
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
+          background: "var(--accent)", color: "#000",
+          padding: "10px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700,
+        }}>{toast}</div>
+      )}
 
       <div style={{ minHeight: "100vh" }}>
         <nav style={{
           position: "sticky", top: 0, zIndex: 100,
           background: "rgba(9,9,11,0.97)", backdropFilter: "blur(12px)",
           borderBottom: "1px solid var(--border)",
-          display: "flex", alignItems: "center", gap: 24,
-          padding: "0 24px", height: 54,
+          display: "flex", alignItems: "center", gap: 24, padding: "0 24px", height: 54,
         }}>
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 9, textDecoration: "none" }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "var(--accent)", animation: "glow 2s infinite" }} />
@@ -183,224 +158,125 @@ export default function Admin() {
           <span style={{ fontSize: 10, color: "var(--accent)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Admin</span>
         </nav>
 
-        <div style={{ maxWidth: 600, margin: "0 auto", padding: "40px 24px", display: "flex", flexDirection: "column", gap: 24 }}>
+        <div style={{ maxWidth: 600, margin: "0 auto", padding: "32px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
 
           {/* Auth + Stats */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "var(--accent)", marginBottom: 12 }}>// Auth</div>
-            {fieldLabel("Cron Secret")}
+          <div style={card}>
+            {label9("// Auth")}
             <input
-              type="password"
-              value={secret}
-              onChange={(e) => setSecret(e.target.value)}
-              placeholder="Required for all actions"
-              style={inputStyle}
-              onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-              onBlur={(e) => { e.target.style.borderColor = "var(--border2)"; loadStats(e.target.value); loadSyncs(e.target.value); }}
+              type="password" value={secret} placeholder="Cron secret"
+              onChange={(e) => { setSecret(e.target.value); try { localStorage.setItem("pm_admin_secret", e.target.value); } catch {} }}
+              onBlur={(e) => { loadStats(e.target.value); }}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                background: "var(--surface2)", border: "1px solid var(--border2)",
+                color: "var(--text)", fontSize: 12, padding: "8px 14px", borderRadius: 3, outline: "none",
+              }}
             />
             {stats && (
-              <div style={{ marginTop: 16, display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8 }}>
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
                 {[
-                  ["Curators", `${stats.curators?.approved ?? "—"} / ${stats.curators?.total ?? "—"}`],
+                  ["Curators", `${stats.curators?.approved ?? "—"}/${stats.curators?.total ?? "—"}`],
                   ["Tracks", stats.tracks?.total ?? "—"],
                   ["Track Adds", stats.adds?.total ?? "—"],
                   ["Votes", stats.votes?.total ?? "—"],
-                ].map(([label, val]) => (
-                  <div key={label} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 12px", textAlign: "center" }}>
-                    <div style={{ fontFamily: "Georgia, serif", fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>{val}</div>
-                    <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{label}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {stats?.recent?.length > 0 && (
-              <div style={{ marginTop: 12, fontSize: 10, color: "var(--muted)" }}>
-                <div style={{ marginBottom: 6, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", fontSize: 9 }}>Most recent adds</div>
-                {stats.recent.map((t, i) => (
-                  <div key={i} style={{ padding: "4px 0", borderBottom: "1px solid var(--border)", display: "flex", justifyContent: "space-between" }}>
-                    <span>{t.track_name} — {t.artist}</span>
-                    <span style={{ color: "var(--faint)", fontSize: 9 }}>{new Date(t.detected_at).toLocaleDateString()}</span>
+                ].map(([l, v]) => (
+                  <div key={l} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 0", textAlign: "center" }}>
+                    <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{v}</div>
+                    <div style={{ fontSize: 8, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{l}</div>
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* Spotify Test */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Diagnose", "Test Spotify API")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Tests playlist and track endpoints and shows the raw Spotify response.
-            </p>
-            {btn("Run Test →", handleTest, !secret, false)}
-            {testResult && (
-              <pre style={{ marginTop: 12, fontSize: 9, color: "var(--muted)", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "var(--surface2)", padding: 12, borderRadius: 3 }}>
-                {testResult}
-              </pre>
-            )}
-          </div>
+          {/* Main actions */}
+          <div style={card}>
+            {label9("// Actions")}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
-          {/* Poll */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Step 1", "Poll Playlists")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Fetches all approved curator playlists, ingests new tracks with artist genres, refreshes popularity, takes daily snapshots, and recomputes scores.
-            </p>
-            {btn(pollRunning ? "Polling..." : "Trigger Poll →", handlePoll, pollRunning || !secret, pollRunning)}
-            {resultBox(pollResult)}
-          </div>
-
-          {/* Refresh Spotify data */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Step 2", "Refresh Spotify Data")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Re-polls all curators, refreshes stale track popularity, takes today's snapshot, and recomputes all scores. Same as Poll but via admin job endpoint.
-            </p>
-            {btn(refreshRunning ? "Refreshing..." : "Refresh Spotify Data →", handleRefresh, refreshRunning || !secret, refreshRunning)}
-            {resultBox(refreshResult)}
-          </div>
-
-          {/* Discover Playlists */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Step 3 (optional)", "Discover Playlists")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Discovers new playlists from Spotify editorial and genre categories.
-            </p>
-            <form onSubmit={handleImport}>
-              {fieldLabel("Min Followers")}
-              <input
-                type="number"
-                value={minFollowers}
-                onChange={(e) => setMinFollowers(e.target.value)}
-                style={{ ...inputStyle, marginBottom: 8 }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
-              />
-              {btn(importRunning ? "Importing..." : "Run Discovery →", handleImport, importRunning || !secret, importRunning)}
-            </form>
-            {resultBox(importResult)}
-          </div>
-
-          {/* Sync Playlists */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Step 4", "Sync Spotify Playlists")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Updates the 10 genre Spotify playlists with current top-500 ranked tracks. Requires <code>SPOTIFY_REFRESH_TOKEN</code> env var.
-            </p>
-            {btn(syncRunning ? "Syncing..." : "Sync Playlists →", handleSync, syncRunning || !secret, syncRunning)}
-            {resultBox(syncResult)}
-            {/* Sync log table */}
-            {syncs?.logs?.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Recent Sync Logs</div>
-                <div style={{ overflowX: "auto" }}>
-                  <table style={{ width: "100%", fontSize: 9, borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ color: "var(--muted)", textAlign: "left" }}>
-                        {["Genre", "Status", "Tracks", "Started"].map((h) => (
-                          <th key={h} style={{ padding: "4px 8px", borderBottom: "1px solid var(--border)", fontWeight: 600 }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {syncs.logs.slice(0, 20).map((log, i) => (
-                        <tr key={i}>
-                          <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--border)", color: "var(--text)" }}>{log.genre}</td>
-                          <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--border)", color: log.status === "success" ? "var(--accent)" : log.status === "error" ? "var(--hot)" : "var(--muted)" }}>{log.status}</td>
-                          <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--border)", color: "var(--muted)" }}>{log.item_count ?? "—"}</td>
-                          <td style={{ padding: "4px 8px", borderBottom: "1px solid var(--border)", color: "var(--faint)" }}>{log.started_at ? new Date(log.started_at).toLocaleString() : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-            {syncs?.mappings?.length > 0 && (
-              <div style={{ marginTop: 16 }}>
-                <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Playlist Mappings</div>
-                {syncs.mappings.map((m) => (
-                  <div key={m.genre} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "5px 0", borderBottom: "1px solid var(--border)", fontSize: 10 }}>
-                    <span style={{ color: "var(--text)", textTransform: "capitalize" }}>{m.genre}</span>
-                    <span style={{ color: m.spotify_playlist_id ? "var(--muted)" : "var(--faint)" }}>
-                      {m.spotify_playlist_id || "No playlist ID"}
-                    </span>
-                    <span style={{ color: m.last_sync_status === "success" ? "var(--accent)" : m.last_sync_status === "error" ? "var(--hot)" : "var(--faint)", fontSize: 9 }}>
-                      {m.last_sync_status || "never synced"}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Score Debug */}
-          <div style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 4, padding: 24 }}>
-            {sectionHead("// Debug", "Track Score Breakdown")}
-            <p style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8, lineHeight: 1.7 }}>
-              Enter a Spotify track ID to see score components and snapshot history.
-            </p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                type="text"
-                value={scoreTrackId}
-                onChange={(e) => setScoreTrackId(e.target.value)}
-                placeholder="Spotify track ID (e.g. 3n3Ppam7...)"
-                style={{ ...inputStyle, flex: 1 }}
-                onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-                onBlur={(e) => (e.target.style.borderColor = "var(--border2)")}
-                onKeyDown={(e) => e.key === "Enter" && handleScoreLookup()}
-              />
+              {/* Full setup */}
               <button
-                onClick={handleScoreLookup}
-                disabled={!secret || !scoreTrackId.trim()}
-                style={{ padding: "8px 16px", background: "var(--accent)", color: "#000", border: "none", borderRadius: 3, fontSize: 10, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}
+                onClick={handleSetup} disabled={!secret || setupRunning}
+                style={{ ...btn({ background: "var(--accent)", color: "#000", padding: "14px 16px", fontSize: 13 }), opacity: (!secret || setupRunning) ? 0.6 : 1 }}
               >
-                Look Up
+                {setupRunning ? "Running… please wait" : "⚡ Full Setup (seed curators + poll)"}
+              </button>
+              {setupLog.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                  {setupLog.map((e, i) => (
+                    <div key={i} style={{ display: "flex", gap: 8, fontSize: 11 }}>
+                      <span style={{ color: e.ok === true ? "var(--accent)" : e.ok === false ? "#ff5555" : "var(--muted)" }}>
+                        {e.ok === true ? "✓" : e.ok === false ? "✗" : "·"}
+                      </span>
+                      <span style={{ color: e.ok === false ? "#ff8888" : "var(--text)" }}>{e.msg}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Trigger poll */}
+              <button
+                onClick={handlePoll} disabled={!secret || pollRunning}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)" }), opacity: (!secret || pollRunning) ? 0.5 : 1 }}
+              >
+                {pollRunning ? "Polling…" : "Trigger Poll"}
+              </button>
+              {pollResult && <ResultBox result={pollResult} />}
+
+              {/* Nuke */}
+              <button
+                onClick={handleNuke} disabled={!secret || nukeRunning}
+                style={{ ...btn({ background: "none", border: "1px solid #ff5555", color: "#ff8888" }), opacity: (!secret || nukeRunning) ? 0.5 : 1 }}
+              >
+                {nukeRunning ? "Clearing…" : "🗑 Clear All Tracks"}
+              </button>
+              {nukeResult && <ResultBox result={nukeResult} />}
+            </div>
+          </div>
+
+          {/* Spotify OAuth */}
+          <div style={card}>
+            {label9("// Spotify OAuth")}
+            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
+              Required for playlist polling. Add this redirect URI to your Spotify app first:
+            </p>
+            <code style={{ display: "block", padding: "6px 10px", background: "var(--surface2)", borderRadius: 2, fontSize: 10, marginBottom: 10, wordBreak: "break-all" }}>
+              {typeof window !== "undefined" ? `${window.location.origin}/api/admin/spotify-callback` : "/api/admin/spotify-callback"}
+            </code>
+            <button
+              onClick={handleSpotifyAuth} disabled={!secret}
+              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)" }), opacity: !secret ? 0.5 : 1 }}
+            >
+              Get Auth URL →
+            </button>
+            {spotifyAuthUrl && (
+              <div style={{ marginTop: 10, padding: 10, background: "rgba(184,240,80,0.07)", border: "1px solid var(--accent)", borderRadius: 3 }}>
+                <div style={{ fontSize: 9, color: "var(--accent)", marginBottom: 4 }}>OPEN IN BROWSER:</div>
+                <a href={spotifyAuthUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: "var(--accent)", wordBreak: "break-all" }}>{spotifyAuthUrl}</a>
+              </div>
+            )}
+          </div>
+
+          {/* Diagnostics */}
+          <div style={card}>
+            {label9("// Diagnostics")}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleSearchTest} disabled={!secret}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
+              >
+                Test Search
+              </button>
+              <button
+                onClick={handlePlaylistTest} disabled={!secret}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
+              >
+                Test Playlist Fetch
               </button>
             </div>
-            {scoreResult && (
-              <div style={{ marginTop: 12 }}>
-                {scoreResult.ok && scoreResult.data.track && (
-                  <>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 12 }}>
-                      {[
-                        ["Name", scoreResult.data.track.name],
-                        ["Artists", scoreResult.data.track.artists],
-                        ["Final Score", Math.round(scoreResult.data.track.final_score)],
-                        ["Popularity", scoreResult.data.track.popularity],
-                        ["Pop Score", Math.round(scoreResult.data.track.popularity_score)],
-                        ["Growth Score", Math.round(scoreResult.data.track.growth_score)],
-                        ["Vote Score", Math.round(scoreResult.data.track.vote_score)],
-                        ["Total Votes", scoreResult.data.totalVotes],
-                        ["Genres", (scoreResult.data.track.genres || []).join(", ") || "—"],
-                        ["Add Count", scoreResult.data.track.add_count],
-                      ].map(([k, v]) => (
-                        <div key={k} style={{ background: "var(--surface2)", borderRadius: 2, padding: "6px 10px" }}>
-                          <div style={{ fontSize: 8, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{k}</div>
-                          <div style={{ fontSize: 11, color: "var(--text)", marginTop: 2 }}>{v ?? "—"}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {scoreResult.data.snapshots?.length > 0 && (
-                      <div>
-                        <div style={{ fontSize: 9, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6 }}>Popularity Snapshots</div>
-                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
-                          {scoreResult.data.snapshots.map((s, i) => (
-                            <div key={i} style={{ background: "var(--surface2)", borderRadius: 2, padding: "4px 8px", fontSize: 9, color: "var(--muted)" }}>
-                              {s.snapshot_date}: <span style={{ color: "var(--accent)" }}>{s.spotify_popularity}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-                {(!scoreResult.ok || scoreResult.data.error) && (
-                  <div style={{ color: "#ff8888", fontSize: 11 }}>{scoreResult.data?.error || "Error"}</div>
-                )}
-              </div>
-            )}
+            {searchResult && <ResultBox result={searchResult} />}
+            {playlistTestResult && <ResultBox result={playlistTestResult} />}
           </div>
 
         </div>

@@ -50,11 +50,11 @@ export default async function handler(req, res) {
             LIMIT 1
           ) AS rank_yesterday
         FROM tracks t
-        WHERE t.popularity > 0
-        ORDER BY t.final_score DESC, t.popularity DESC
+        WHERE t.name IS NOT NULL
+        ORDER BY t.final_score DESC NULLS LAST, t.popularity DESC, t.created_at DESC
         LIMIT ${PAGE_SIZE} OFFSET ${offset}
       `,
-      sql`SELECT COUNT(*)::int AS total FROM tracks WHERE popularity > 0`,
+      sql`SELECT COUNT(*)::int AS total FROM tracks WHERE name IS NOT NULL`,
     ]);
 
     const total = Math.min(totalRow?.total || 0, MAX_TRACKS);
