@@ -16,17 +16,29 @@ const btn = (extra = {}) => ({
 function ResultBox({ result }) {
   if (!result) return null;
   const ok = result.ok !== false;
+  const text = JSON.stringify(result.data, null, 2);
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500); });
+  };
   return (
-    <pre style={{
-      marginTop: 12, padding: "10px 12px", borderRadius: 3, fontSize: 10,
-      background: ok ? "rgba(184,240,80,0.06)" : "rgba(255,85,85,0.07)",
-      border: `1px solid ${ok ? "var(--accent)" : "#ff5555"}`,
-      color: ok ? "var(--text)" : "#ff8888",
-      whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
-      maxHeight: 400, overflow: "auto",
-    }}>
-      {JSON.stringify(result.data, null, 2)}
-    </pre>
+    <div style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 4 }}>
+        <button onClick={copy} style={{ ...btn({ background: "none", border: "1px solid var(--border2)", color: "var(--muted)", padding: "4px 10px", fontSize: 9 }) }}>
+          {copied ? "Copied!" : "Copy JSON"}
+        </button>
+      </div>
+      <pre style={{
+        padding: "10px 12px", borderRadius: 3, fontSize: 10,
+        background: ok ? "rgba(184,240,80,0.06)" : "rgba(255,85,85,0.07)",
+        border: `1px solid ${ok ? "var(--accent)" : "#ff5555"}`,
+        color: ok ? "var(--text)" : "#ff8888",
+        whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
+        maxHeight: 400, overflow: "auto",
+      }}>
+        {text}
+      </pre>
+    </div>
   );
 }
 
