@@ -81,9 +81,10 @@ export default function Admin() {
       log("Polling curator playlists...");
       const r2 = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
       const d2 = await r2.json();
-      const errs = d2.errors?.filter(e => e.step) || [];
+      const errs = d2.errors || [];
       if (d2.tracksFound === 0) {
-        log(`Poll found 0 tracks${errs.length ? " — errors: " + JSON.stringify(errs.slice(0, 2)) : ""}`, false);
+        const sample = errs.slice(0, 2).map(e => e.error || e.playlist || JSON.stringify(e)).join("; ");
+        log(`Poll found 0 tracks${sample ? ` — ${sample}` : ""}`, false);
       } else {
         log(`Found ${d2.tracksFound} tracks, ${d2.newTracksIngested} new ingested`, true);
         log(`Snapshots: ${d2.snapshotsTaken}, track_adds: ${d2.trackAddsRecorded ?? 0}`, errs.length === 0);
