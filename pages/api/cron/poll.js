@@ -1,22 +1,36 @@
-import { fetchNewReleaseAlbumIds, fetchAlbumTrackIds, fetchTracksFull, searchTracks } from "../../../lib/spotify.js";
+import { searchTracks } from "../../../lib/spotify.js";
 import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
 
-// Only ingest tracks with measurable Spotify popularity
 const MIN_POPULARITY = 10;
 
-// Supplemental search queries for genre/style variety
+// Spotify dev-mode restricts /browse/new-releases and /playlists/{id}/tracks.
+// Search returns full track objects including popularity — use them directly.
 const SEARCH_QUERIES = [
   "year:2026",
+  { q: "year:2026", offset: 10 },
+  { q: "year:2026", offset: 20 },
   "year:2025",
+  { q: "year:2025", offset: 10 },
+  { q: "year:2025", offset: 20 },
   "genre:indie year:2026",
+  { q: "genre:indie year:2026", offset: 10 },
   "genre:indie year:2025",
+  { q: "genre:indie year:2025", offset: 10 },
   "genre:pop year:2026",
+  { q: "genre:pop year:2026", offset: 10 },
+  "genre:pop year:2025",
   "genre:hip-hop year:2025",
+  "genre:hip-hop year:2026",
   "genre:electronic year:2025",
+  "genre:electronic year:2026",
   "genre:r&b year:2025",
+  "genre:r&b year:2026",
   "genre:rock year:2025",
+  "genre:rock year:2026",
   "genre:alternative year:2025",
+  "genre:soul year:2025",
+  "genre:dance year:2026",
 ];
 
 export default async function handler(req, res) {
@@ -25,7 +39,6 @@ export default async function handler(req, res) {
   }
 
   const results = {
-    albumsScanned: 0,
     tracksFound: 0,
     tracksAboveThreshold: 0,
     newTracksIngested: 0,
@@ -36,83 +49,72 @@ export default async function handler(req, res) {
   };
 
   try {
+    // ── Step 1: Search — returns full track objects with popularity ────────────
     const seen = new Set();
-    let allTrackIds = [];
+    const allTracks = [];
 
-    // ── Step 1: New releases — gets real popular tracks ───────────────────────
-    try {
-      const albumIds = await fetchNewReleaseAlbumIds(50);
-      results.albumsScanned = albumIds.length;
+    const queries = SEARCH_QUERIES.map((entry) =>
+      typeof entry === "string" ? { q: entry, offset: 0 } : entry
+    );
 
-      const albumTrackResults = await Promise.allSettled(
-        albumIds.map((id) => fetchAlbumTrackIds(id))
-      );
-
-      for (const r of albumTrackResults) {
-        if (r.status === "fulfilled") {
-          for (const id of r.value) {
-            if (!seen.has(id)) { seen.add(id); allTrackIds.push(id); }
-          }
-        }
-      }
-      results.queryStats.push({ source: "new-releases", trackIds: allTrackIds.length });
-    } catch (err) {
-      results.errors.push({ step: "new-releases", error: err.message });
-    }
-
-    // ── Step 2: Search queries — genre/year variety ───────────────────────────
     const searchResults = await Promise.allSettled(
-      SEARCH_QUERIES.map((q) => searchTracks(q, 10).then((tracks) => ({ q, tracks })))
+      queries.map(({ q, offset }) =>
+        searchTracks(q, 10, offset).then((tracks) => ({ q, offset, tracks }))
+      )
     );
 
     for (const r of searchResults) {
       if (r.status === "fulfilled") {
-        const { q, tracks } = r.value;
-        let fresh = 0;
+        const { q, offset, tracks } = r.value;
+        let unique = 0;
         for (const t of tracks) {
-          if (!seen.has(t.id)) { seen.add(t.id); allTrackIds.push(t.id); fresh++; }
+          if (t?.id && !seen.has(t.id)) {
+            seen.add(t.id);
+            allTracks.push(t);
+            unique++;
+          }
         }
-        results.queryStats.push({ source: "search", q, found: tracks.length, unique: fresh });
+        results.queryStats.push({ q, offset, found: tracks.length, unique });
       } else {
         results.errors.push({ step: "search", error: r.reason?.message });
       }
     }
 
-    results.tracksFound = allTrackIds.length;
+    results.tracksFound = allTracks.length;
 
-    // ── Step 3: Batch-fetch full track objects (with popularity) ──────────────
-    let tracksWithPopularity = [];
-    try {
-      const full = await fetchTracksFull(allTrackIds);
-      const allFull = Object.values(full);
-      tracksWithPopularity = allFull.filter((t) => (t.popularity || 0) >= MIN_POPULARITY);
-      results.tracksAboveThreshold = tracksWithPopularity.length;
-    } catch (err) {
-      results.errors.push({ step: "fetch-full", error: err.message });
-    }
+    // ── Step 2: Filter to tracks with measurable popularity ───────────────────
+    const popularTracks = allTracks.filter((t) => (t.popularity || 0) >= MIN_POPULARITY);
+    results.tracksAboveThreshold = popularTracks.length;
+    results.popularityRange = popularTracks.length
+      ? {
+          min: Math.min(...popularTracks.map((t) => t.popularity)),
+          max: Math.max(...popularTracks.map((t) => t.popularity)),
+          sample: popularTracks.slice(0, 3).map((t) => ({ name: t.name, popularity: t.popularity })),
+        }
+      : null;
 
-    // ── Step 4: Ingest ────────────────────────────────────────────────────────
+    // ── Step 3: Ingest ────────────────────────────────────────────────────────
     try {
-      results.newTracksIngested = await ingestTrackObjects(tracksWithPopularity);
+      results.newTracksIngested = await ingestTrackObjects(popularTracks);
     } catch (err) {
       results.errors.push({ step: "ingest", error: err.message });
     }
 
-    // ── Step 5: Refresh stale popularities ────────────────────────────────────
+    // ── Step 4: Refresh stale popularities ────────────────────────────────────
     try {
       results.popularityRefreshed = await refreshTrackPopularities();
     } catch (err) {
       results.errors.push({ step: "popularity", error: err.message });
     }
 
-    // ── Step 6: Daily snapshots ───────────────────────────────────────────────
+    // ── Step 5: Daily snapshots ───────────────────────────────────────────────
     try {
       results.snapshotsTaken = await takeDailySnapshots();
     } catch (err) {
       results.errors.push({ step: "snapshots", error: err.message });
     }
 
-    // ── Step 7: Recompute scores ──────────────────────────────────────────────
+    // ── Step 6: Recompute scores ──────────────────────────────────────────────
     try {
       await recomputeAllTrackScores();
     } catch (err) {
