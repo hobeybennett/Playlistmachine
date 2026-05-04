@@ -41,6 +41,7 @@ export default function Admin() {
   const [nukeResult, setNukeResult] = useState(null);
   const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
   const [searchResult, setSearchResult] = useState(null);
+  const [playlistTestResult, setPlaylistTestResult] = useState(null);
 
   useEffect(() => {
     try {
@@ -117,6 +118,15 @@ export default function Admin() {
       const r = await fetch("/api/admin/test-search", { headers: { Authorization: `Bearer ${secret}` } });
       setSearchResult({ ok: r.ok, data: await r.json() });
     } catch (e) { setSearchResult({ ok: false, data: { error: e.message } }); }
+  };
+
+  const handlePlaylistTest = async () => {
+    setPlaylistTestResult(null);
+    try {
+      const r = await fetch("/api/admin/test-playlist", { headers: { Authorization: `Bearer ${secret}` } });
+      const data = await r.json();
+      setPlaylistTestResult({ ok: data.userTokenOk && data.itemsLength > 0, data });
+    } catch (e) { setPlaylistTestResult({ ok: false, data: { error: e.message } }); }
   };
 
   return (
@@ -251,13 +261,22 @@ export default function Admin() {
           {/* Diagnostics */}
           <div style={card}>
             {label9("// Diagnostics")}
-            <button
-              onClick={handleSearchTest} disabled={!secret}
-              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
-            >
-              Test Spotify Search
-            </button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleSearchTest} disabled={!secret}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
+              >
+                Test Search
+              </button>
+              <button
+                onClick={handlePlaylistTest} disabled={!secret}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
+              >
+                Test Playlist Fetch
+              </button>
+            </div>
             {searchResult && <ResultBox result={searchResult} />}
+            {playlistTestResult && <ResultBox result={playlistTestResult} />}
           </div>
 
         </div>
