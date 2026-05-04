@@ -33,9 +33,22 @@ export default async function handler(req, res) {
           t.score_components,
           t.release_date,
           t.explicit,
+          COALESCE(
+            (SELECT MIN(ta.detected_at) FROM track_adds ta WHERE ta.spotify_track_id = t.spotify_track_id),
+            t.created_at
+          ) AS first_seen,
           (SELECT COUNT(*)::int FROM votes v WHERE v.track_id = t.id) AS vote_count,
-          (SELECT COUNT(*)::int FROM track_adds ta WHERE ta.spotify_track_id = t.spotify_track_id) AS add_count,
-          (SELECT MIN(ta.detected_at) FROM track_adds ta WHERE ta.spotify_track_id = t.spotify_track_id) AS first_seen
+          (SELECT COUNT(*)::int FROM track_adds ta
+            JOIN curators c ON c.id = ta.curator_id
+            WHERE ta.spotify_track_id = t.spotify_track_id
+              AND c.status = 'approved'
+              AND c.follower_count >= 1000
+          ) AS quality_adds,
+          (SELECT ds.rank_all FROM daily_snapshots ds
+            WHERE ds.track_id = t.id
+              AND ds.snapshot_date = (CURRENT_DATE - INTERVAL '1 day')
+            LIMIT 1
+          ) AS rank_yesterday
         FROM tracks t
         WHERE t.popularity > 0
         ORDER BY t.final_score DESC, t.popularity DESC

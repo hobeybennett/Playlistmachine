@@ -27,6 +27,18 @@ function daysAgo(iso) {
   return `${Math.floor(d / 30)}mo ago`;
 }
 
+function RankMovement({ current, yesterday }) {
+  if (!yesterday) return <span style={{ fontSize: 8, color: "var(--accent)", letterSpacing: "0.04em" }}>NEW</span>;
+  const diff = yesterday - current;
+  if (diff === 0) return <span style={{ fontSize: 9, color: "var(--faint)" }}>—</span>;
+  const up = diff > 0;
+  return (
+    <span style={{ fontSize: 8, color: up ? "var(--accent)" : "var(--hot)", letterSpacing: "0.02em" }}>
+      {up ? "▲" : "▼"}{Math.abs(diff)}
+    </span>
+  );
+}
+
 function GrowthBadge({ growthScore }) {
   if (!growthScore || growthScore < 5) return null;
   const hot = growthScore >= 50;
@@ -118,15 +130,14 @@ function UpvoteButton({ trackId, spotifyId, initialCount, onVoted }) {
   );
 }
 
-function TrackRow({ track, rank, index }) {
+function TrackRow({ track, rank }) {
   const isHot = track.growth_score >= 50;
-  const genres = track.genres || [];
 
   return (
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "36px 44px 1fr auto auto",
+        gridTemplateColumns: "52px 48px 1fr auto auto",
         alignItems: "center",
         gap: 12,
         padding: "10px 16px",
@@ -137,65 +148,67 @@ function TrackRow({ track, rank, index }) {
       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface)")}
       onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
     >
-      {/* Rank */}
-      <div style={{
-        textAlign: "center",
-        fontFamily: "Georgia, serif",
-        fontSize: rank <= 3 ? 9 : 12,
-        fontWeight: 700,
-        color: rank <= 3 ? "var(--accent)" : "var(--faint)",
-        letterSpacing: rank <= 3 ? "0.06em" : 0,
-      }}>
-        {rank <= 3 ? "▲" + rank : rank}
+      {/* Rank + movement */}
+      <div style={{ textAlign: "center", flexShrink: 0 }}>
+        <div style={{
+          fontSize: rank <= 3 ? 11 : 13,
+          fontWeight: 700,
+          color: rank <= 3 ? "var(--accent)" : "var(--muted)",
+          lineHeight: 1,
+        }}>
+          {rank}
+        </div>
+        <div style={{ marginTop: 3 }}>
+          <RankMovement current={rank} yesterday={track.rank_yesterday} />
+        </div>
       </div>
 
       {/* Art */}
       {track.image_url ? (
-        <img src={track.image_url} alt="" width={40} height={40}
-          style={{ borderRadius: 2, objectFit: "cover", display: "block", flexShrink: 0 }} />
+        <img src={track.image_url} alt="" width={42} height={42}
+          style={{ borderRadius: 3, objectFit: "cover", display: "block", flexShrink: 0 }} />
       ) : (
-        <div style={{ width: 40, height: 40, background: "var(--surface2)", borderRadius: 2, flexShrink: 0 }} />
+        <div style={{ width: 42, height: 42, background: "var(--surface2)", borderRadius: 3, flexShrink: 0 }} />
       )}
 
       {/* Info */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 0, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <a
             href={track.external_url || `https://open.spotify.com/track/${track.spotify_track_id}`}
             target="_blank" rel="noreferrer"
             onClick={(e) => e.stopPropagation()}
-            style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}
+            style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
           >
             {track.name}
           </a>
           <GrowthBadge growthScore={track.growth_score} />
         </div>
-        <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {track.artists}
         </div>
-        <div style={{ marginTop: 3, display: "flex", flexWrap: "wrap", gap: 2, alignItems: "center" }}>
-          {genres.slice(0, 3).map((g) => <GenreBadge key={g} genre={g} />)}
+        <div style={{ marginTop: 4, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           {track.first_seen && (
-            <span style={{ fontSize: 8, color: "var(--faint)", marginLeft: 2 }}>
-              found {daysAgo(track.first_seen)}
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>
+              Added {daysAgo(track.first_seen)}
+            </span>
+          )}
+          {track.quality_adds > 0 && (
+            <span style={{ fontSize: 11, color: "var(--accent)", opacity: 0.8 }}>
+              {track.quality_adds} curator {track.quality_adds === 1 ? "add" : "adds"}
             </span>
           )}
         </div>
       </div>
 
-      {/* Score + popularity */}
-      <div style={{ textAlign: "right", flexShrink: 0, minWidth: 48 }}>
-        <div style={{ fontFamily: "Georgia, serif", fontSize: 18, fontWeight: 700, color: isHot ? "var(--hot)" : "var(--text)", lineHeight: 1 }}>
+      {/* Score */}
+      <div style={{ textAlign: "right", flexShrink: 0, minWidth: 44 }}>
+        <div style={{ fontSize: 20, fontWeight: 700, color: isHot ? "var(--hot)" : "var(--text)", lineHeight: 1 }}>
           {Math.round(track.final_score)}
         </div>
-        <div style={{ fontSize: 8, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>
+        <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 3 }}>
           pop {track.popularity}
         </div>
-        {track.add_count > 1 && (
-          <div style={{ fontSize: 8, color: "var(--faint)", marginTop: 1 }}>
-            {track.add_count} adds
-          </div>
-        )}
       </div>
 
       {/* Upvote */}
