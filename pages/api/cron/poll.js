@@ -1,7 +1,36 @@
-import { fetchPlaylistTracks } from "../../../lib/spotify.js";
-import { ingestPlaylistItems, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
+import { searchTracks } from "../../../lib/spotify.js";
+import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
-import { sql } from "../../../lib/db.js";
+
+// Dev-mode Spotify apps can't read playlist tracks, so we discover via search.
+// Each query returns up to 10 tracks; we paginate with offsets to get breadth.
+const QUERIES = [
+  { q: "year:2026" },
+  { q: "year:2025" },
+  { q: "genre:indie year:2026" },
+  { q: "genre:indie year:2025" },
+  { q: "genre:pop year:2026" },
+  { q: "genre:pop year:2025" },
+  { q: "genre:hip-hop year:2026" },
+  { q: "genre:hip-hop year:2025" },
+  { q: "genre:electronic year:2026" },
+  { q: "genre:electronic year:2025" },
+  { q: "genre:r&b year:2026" },
+  { q: "genre:r&b year:2025" },
+  { q: "genre:rock year:2026" },
+  { q: "genre:rock year:2025" },
+  { q: "genre:alternative year:2025" },
+  { q: "genre:soul year:2025" },
+  { q: "genre:dance year:2026" },
+  { q: "genre:punk year:2025" },
+  { q: "genre:country year:2025" },
+  { q: "genre:metal year:2025" },
+  // Second page of broad queries for more variety
+  { q: "year:2026", offset: 10 },
+  { q: "year:2025", offset: 10 },
+  { q: "genre:indie year:2025", offset: 10 },
+  { q: "genre:pop year:2025", offset: 10 },
+];
 
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -9,10 +38,8 @@ export default async function handler(req, res) {
   }
 
   const results = {
-    curatorsPolled: 0,
     tracksFound: 0,
     newTracksIngested: 0,
-    trackAddsRecorded: 0,
     popularityRefreshed: 0,
     snapshotsTaken: 0,
     queryStats: [],
@@ -20,95 +47,57 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ── Step 1: Load approved curators ───────────────────────────────────────
-    const { rows: curators } = await sql`
-      SELECT id, spotify_playlist_id, name FROM curators WHERE status = 'approved'
-    `;
+    // ── Step 1: Search across queries ────────────────────────────────────────
+    const seen = new Set();
+    const allTracks = [];
 
-    // ── Step 2: Fetch all playlists in parallel (rate-limited by spotifyFetch) ─
-    const pollResults = await Promise.allSettled(
-      curators.map((c) =>
-        fetchPlaylistTracks(c.spotify_playlist_id, 50).then((items) => ({ curator: c, items }))
+    const searchResults = await Promise.allSettled(
+      QUERIES.map(({ q, offset = 0 }) =>
+        searchTracks(q, 10, offset).then((tracks) => ({ q, offset, tracks }))
       )
     );
 
-    const seen = new Set();
-    const allItems = [];
-    const trackAddRows = [];
-
-    for (const result of pollResults) {
-      results.curatorsPolled++;
+    for (const result of searchResults) {
       if (result.status === "fulfilled") {
-        const { curator, items } = result.value;
-        results.queryStats.push({ playlist: curator.name, found: items.length });
-        for (const item of items) {
-          const track = item?.track;
-          if (!track?.id) continue;
-          if (!seen.has(track.id)) {
-            seen.add(track.id);
-            allItems.push(item);
+        const { q, offset, tracks } = result.value;
+        let fresh = 0;
+        for (const t of tracks) {
+          if (!seen.has(t.id)) {
+            seen.add(t.id);
+            allTracks.push(t);
+            fresh++;
           }
-          trackAddRows.push({
-            curatorId: curator.id,
-            spotifyTrackId: track.id,
-            trackName: track.name || null,
-            artist: (track.artists || []).map((a) => a.name).join(", ") || null,
-            album: track.album?.name || null,
-            albumArt: track.album?.images?.[0]?.url || null,
-            spotifyUrl: track.external_urls?.spotify || null,
-            previewUrl: track.preview_url || null,
-            popularity: track.popularity || 0,
-            addedAt: item.added_at || null,
-          });
         }
+        results.queryStats.push({ q, offset: offset || 0, found: tracks.length, unique: fresh });
       } else {
-        results.errors.push({ playlist: result.reason?.message });
+        results.errors.push({ step: "search", error: result.reason?.message });
       }
     }
 
-    results.tracksFound = allItems.length;
+    results.tracksFound = allTracks.length;
 
-    // ── Step 3: Ingest tracks ─────────────────────────────────────────────────
+    // ── Step 2: Ingest ───────────────────────────────────────────────────────
     try {
-      results.newTracksIngested = await ingestPlaylistItems(allItems);
+      results.newTracksIngested = await ingestTrackObjects(allTracks);
     } catch (err) {
       results.errors.push({ step: "ingest", error: err.message });
     }
 
-    // ── Step 4: Record track_adds (skip duplicates) ───────────────────────────
-    try {
-      for (const r of trackAddRows) {
-        await sql`
-          INSERT INTO track_adds (
-            curator_id, spotify_track_id, track_name, artist, album,
-            album_art, spotify_url, preview_url, popularity, playlist_added_at, detected_at
-          ) VALUES (
-            ${r.curatorId}, ${r.spotifyTrackId}, ${r.trackName}, ${r.artist}, ${r.album},
-            ${r.albumArt}, ${r.spotifyUrl}, ${r.previewUrl}, ${r.popularity}, ${r.addedAt}, NOW()
-          )
-          ON CONFLICT (spotify_track_id, curator_id) DO NOTHING
-        `;
-      }
-      results.trackAddsRecorded = trackAddRows.length;
-    } catch (err) {
-      results.errors.push({ step: "track_adds", error: err.message });
-    }
-
-    // ── Step 5: Refresh stale popularities ────────────────────────────────────
+    // ── Step 3: Refresh stale popularities ────────────────────────────────────
     try {
       results.popularityRefreshed = await refreshTrackPopularities();
     } catch (err) {
       results.errors.push({ step: "popularity", error: err.message });
     }
 
-    // ── Step 6: Daily snapshots ───────────────────────────────────────────────
+    // ── Step 4: Daily snapshots ───────────────────────────────────────────────
     try {
       results.snapshotsTaken = await takeDailySnapshots();
     } catch (err) {
       results.errors.push({ step: "snapshots", error: err.message });
     }
 
-    // ── Step 7: Recompute scores ──────────────────────────────────────────────
+    // ── Step 5: Recompute scores ──────────────────────────────────────────────
     try {
       await recomputeAllTrackScores();
     } catch (err) {
