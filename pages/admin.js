@@ -23,6 +23,7 @@ function ResultBox({ result }) {
       border: `1px solid ${ok ? "var(--accent)" : "#ff5555"}`,
       color: ok ? "var(--text)" : "#ff8888",
       whiteSpace: "pre-wrap", wordBreak: "break-word", margin: 0,
+      maxHeight: 400, overflow: "auto",
     }}>
       {JSON.stringify(result.data, null, 2)}
     </pre>
@@ -35,13 +36,9 @@ export default function Admin() {
   const [toast, setToast] = useState(null);
   const [pollRunning, setPollRunning] = useState(false);
   const [pollResult, setPollResult] = useState(null);
-  const [setupRunning, setSetupRunning] = useState(false);
-  const [setupLog, setSetupLog] = useState([]);
   const [nukeRunning, setNukeRunning] = useState(false);
   const [nukeResult, setNukeResult] = useState(null);
-  const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
   const [searchResult, setSearchResult] = useState(null);
-  const [playlistTestResult, setPlaylistTestResult] = useState(null);
 
   useEffect(() => {
     try {
@@ -69,31 +66,6 @@ export default function Admin() {
     setPollRunning(false); loadStats();
   };
 
-  const handleSetup = async () => {
-    setSetupRunning(true); setSetupLog([]);
-    const log = (msg, ok = null) => setSetupLog((p) => [...p, { msg, ok }]);
-    try {
-      log("Seeding curators...");
-      const r1 = await fetch("/api/admin/seed-curators", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
-      const d1 = await r1.json();
-      if (!r1.ok) { log(`Seed failed: ${d1.error}`, false); setSetupRunning(false); return; }
-      log(`Curators seeded — ${d1.inserted} new, ${d1.skipped} existing`, true);
-
-      log("Polling curator playlists...");
-      const r2 = await fetch("/api/cron/poll", { headers: { Authorization: `Bearer ${secret}` } });
-      const d2 = await r2.json();
-      const errs = d2.errors || [];
-      if (d2.tracksFound === 0) {
-        const sample = errs.slice(0, 2).map(e => e.error || e.playlist || JSON.stringify(e)).join("; ");
-        log(`Poll found 0 tracks${sample ? ` — ${sample}` : ""}`, false);
-      } else {
-        log(`Found ${d2.tracksFound} tracks, ${d2.newTracksIngested} new ingested`, true);
-        log(`Snapshots: ${d2.snapshotsTaken}, track_adds: ${d2.trackAddsRecorded ?? 0}`, errs.length === 0);
-      }
-    } catch (e) { log(`Error: ${e.message}`, false); }
-    setSetupRunning(false); loadStats();
-  };
-
   const handleNuke = async () => {
     if (!confirm("Delete ALL tracks, snapshots, votes and track_adds from the DB? This cannot be undone.")) return;
     setNukeRunning(true); setNukeResult(null);
@@ -104,29 +76,12 @@ export default function Admin() {
     setNukeRunning(false); loadStats();
   };
 
-  const handleSpotifyAuth = async () => {
-    try {
-      const r = await fetch("/api/admin/spotify-auth", { headers: { Authorization: `Bearer ${secret}` } });
-      const d = await r.json();
-      if (d.authUrl) setSpotifyAuthUrl(d.authUrl);
-    } catch {}
-  };
-
   const handleSearchTest = async () => {
     setSearchResult(null);
     try {
       const r = await fetch("/api/admin/test-search", { headers: { Authorization: `Bearer ${secret}` } });
       setSearchResult({ ok: r.ok, data: await r.json() });
     } catch (e) { setSearchResult({ ok: false, data: { error: e.message } }); }
-  };
-
-  const handlePlaylistTest = async () => {
-    setPlaylistTestResult(null);
-    try {
-      const r = await fetch("/api/admin/test-playlist", { headers: { Authorization: `Bearer ${secret}` } });
-      const data = await r.json();
-      setPlaylistTestResult({ ok: data.userTokenOk && data.itemsLength > 0, data });
-    } catch (e) { setPlaylistTestResult({ ok: false, data: { error: e.message } }); }
   };
 
   return (
@@ -174,12 +129,11 @@ export default function Admin() {
               }}
             />
             {stats && (
-              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                 {[
-                  ["Curators", `${stats.curators?.approved ?? "—"}/${stats.curators?.total ?? "—"}`],
-                  ["Tracks", stats.tracks?.total ?? "—"],
-                  ["Track Adds", stats.adds?.total ?? "—"],
-                  ["Votes", stats.votes?.total ?? "—"],
+                  ["Total Tracks", stats.tracks?.total ?? "—"],
+                  ["With Popularity", stats.withPop?.total ?? "—"],
+                  ["Avg Popularity", stats.withPop?.avg_pop ?? "—"],
                 ].map(([l, v]) => (
                   <div key={l} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 0", textAlign: "center" }}>
                     <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{v}</div>
@@ -195,36 +149,14 @@ export default function Admin() {
             {label9("// Actions")}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
 
-              {/* Full setup */}
-              <button
-                onClick={handleSetup} disabled={!secret || setupRunning}
-                style={{ ...btn({ background: "var(--accent)", color: "#000", padding: "14px 16px", fontSize: 13 }), opacity: (!secret || setupRunning) ? 0.6 : 1 }}
-              >
-                {setupRunning ? "Running… please wait" : "⚡ Full Setup (seed curators + poll)"}
-              </button>
-              {setupLog.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                  {setupLog.map((e, i) => (
-                    <div key={i} style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                      <span style={{ color: e.ok === true ? "var(--accent)" : e.ok === false ? "#ff5555" : "var(--muted)" }}>
-                        {e.ok === true ? "✓" : e.ok === false ? "✗" : "·"}
-                      </span>
-                      <span style={{ color: e.ok === false ? "#ff8888" : "var(--text)" }}>{e.msg}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Trigger poll */}
               <button
                 onClick={handlePoll} disabled={!secret || pollRunning}
-                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)" }), opacity: (!secret || pollRunning) ? 0.5 : 1 }}
+                style={{ ...btn({ background: "var(--accent)", color: "#000", padding: "14px 16px", fontSize: 13 }), opacity: (!secret || pollRunning) ? 0.6 : 1 }}
               >
-                {pollRunning ? "Polling…" : "Trigger Poll"}
+                {pollRunning ? "Polling…" : "⚡ Trigger Poll"}
               </button>
               {pollResult && <ResultBox result={pollResult} />}
 
-              {/* Nuke */}
               <button
                 onClick={handleNuke} disabled={!secret || nukeRunning}
                 style={{ ...btn({ background: "none", border: "1px solid #ff5555", color: "#ff8888" }), opacity: (!secret || nukeRunning) ? 0.5 : 1 }}
@@ -235,48 +167,19 @@ export default function Admin() {
             </div>
           </div>
 
-          {/* Spotify OAuth */}
-          <div style={card}>
-            {label9("// Spotify OAuth")}
-            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
-              Required for playlist polling. Add this redirect URI to your Spotify app first:
-            </p>
-            <code style={{ display: "block", padding: "6px 10px", background: "var(--surface2)", borderRadius: 2, fontSize: 10, marginBottom: 10, wordBreak: "break-all" }}>
-              {typeof window !== "undefined" ? `${window.location.origin}/api/admin/spotify-callback` : "/api/admin/spotify-callback"}
-            </code>
-            <button
-              onClick={handleSpotifyAuth} disabled={!secret}
-              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--accent)" }), opacity: !secret ? 0.5 : 1 }}
-            >
-              Get Auth URL →
-            </button>
-            {spotifyAuthUrl && (
-              <div style={{ marginTop: 10, padding: 10, background: "rgba(184,240,80,0.07)", border: "1px solid var(--accent)", borderRadius: 3 }}>
-                <div style={{ fontSize: 9, color: "var(--accent)", marginBottom: 4 }}>OPEN IN BROWSER:</div>
-                <a href={spotifyAuthUrl} target="_blank" rel="noreferrer" style={{ fontSize: 10, color: "var(--accent)", wordBreak: "break-all" }}>{spotifyAuthUrl}</a>
-              </div>
-            )}
-          </div>
-
           {/* Diagnostics */}
           <div style={card}>
             {label9("// Diagnostics")}
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={handleSearchTest} disabled={!secret}
-                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
-              >
-                Test Search
-              </button>
-              <button
-                onClick={handlePlaylistTest} disabled={!secret}
-                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
-              >
-                Test Playlist Fetch
-              </button>
-            </div>
+            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
+              Shows full raw Spotify track object including all fields returned by the search API.
+            </p>
+            <button
+              onClick={handleSearchTest} disabled={!secret}
+              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
+            >
+              Test Search (show raw Spotify response)
+            </button>
             {searchResult && <ResultBox result={searchResult} />}
-            {playlistTestResult && <ResultBox result={playlistTestResult} />}
           </div>
 
         </div>

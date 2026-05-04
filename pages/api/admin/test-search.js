@@ -5,20 +5,20 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  const q = req.query.q || "year:2025";
   const start = Date.now();
   try {
-    const tracks = await searchTracks("year:2025", 10);
+    const tracks = await searchTracks(q, 10);
     return res.status(200).json({
       ok: true,
       elapsedMs: Date.now() - start,
+      query: q,
       trackCount: tracks.length,
-      sample: tracks.slice(0, 3).map((t) => ({ id: t.id, name: t.name, artist: t.artists?.[0]?.name })),
+      // Full first track object so we can see every field Spotify returns
+      firstTrackRaw: tracks[0] || null,
+      popularitySample: tracks.map((t) => ({ name: t.name, artist: t.artists?.[0]?.name, popularity: t.popularity })),
     });
   } catch (err) {
-    return res.status(200).json({
-      ok: false,
-      elapsedMs: Date.now() - start,
-      error: err.message,
-    });
+    return res.status(200).json({ ok: false, elapsedMs: Date.now() - start, error: err.message });
   }
 }

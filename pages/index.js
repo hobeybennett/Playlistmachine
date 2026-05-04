@@ -193,11 +193,6 @@ function TrackRow({ track, rank }) {
               Added {daysAgo(track.first_seen)}
             </span>
           )}
-          {track.quality_adds > 0 && (
-            <span style={{ fontSize: 11, color: "var(--accent)", opacity: 0.8 }}>
-              {track.quality_adds} curator {track.quality_adds === 1 ? "add" : "adds"}
-            </span>
-          )}
         </div>
       </div>
 
