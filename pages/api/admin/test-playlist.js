@@ -16,17 +16,16 @@ export default async function handler(req, res) {
     results.userTokenOk = true;
     results.userTokenPrefix = userToken.slice(0, 12) + "...";
 
-    // 2. Fetch playlist with user token
-    const r = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}`, {
+    // 2. Fetch playlist tracks with user token
+    const r = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks?limit=5`, {
       headers: { Authorization: `Bearer ${userToken}` },
     });
     results.playlistStatus = r.status;
     const data = await r.json();
-    results.playlistName = data.name;
-    results.tracksTotal = data.tracks?.total;
-    results.itemsLength = data.tracks?.items?.length;
-    results.firstItem = data.tracks?.items?.[0]
-      ? { trackId: data.tracks.items[0].track?.id, trackName: data.tracks.items[0].track?.name }
+    results.tracksTotal = data.total;
+    results.itemsLength = data.items?.length;
+    results.firstItem = data.items?.[0]
+      ? { trackId: data.items[0].track?.id, trackName: data.items[0].track?.name, popularity: data.items[0].track?.popularity }
       : null;
   } catch (e) {
     results.userTokenOk = false;
