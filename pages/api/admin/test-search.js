@@ -5,7 +5,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const q = req.query.q || "year:2025";
+  const q = req.query.q || "tag:new";
   const start = Date.now();
   try {
     const tracks = await searchTracks(q, 10);
