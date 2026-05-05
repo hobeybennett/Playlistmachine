@@ -1,6 +1,6 @@
-import { fetchRedditTracks } from "../../../lib/sources/reddit.js";
-import { fetchHypemTracks } from "../../../lib/sources/hypem.js";
-import { fetchLastfmTracks } from "../../../lib/sources/lastfm.js";
+import { fetchAppleMusicTracks } from "../../../lib/sources/applemusic.js";
+import { fetchDeezerTracks } from "../../../lib/sources/deezer.js";
+import { fetchPitchforkTracks } from "../../../lib/sources/pitchfork.js";
 import { searchTracks, getSpotifyUserId, createPlaylist, updatePlaylist } from "../../../lib/spotify.js";
 import { ingestTrackObjects, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
@@ -8,26 +8,15 @@ import { sql, getSetting, setSetting } from "../../../lib/db.js";
 
 export const config = { maxDuration: 120 };
 
-// Normalize each source's signal to 0-100
-function redditScore(upvotes) {
-  return Math.min(100, (Math.log(1 + upvotes) / Math.log(1001)) * 100);
-}
-function hypemScore(loved, posted) {
-  return Math.min(100, (loved / 5) + (posted * 10));
-}
-function lastfmScore(listeners) {
-  return Math.min(100, (Math.log(1 + listeners) / Math.log(1_000_001)) * 100);
-}
-
 export default async function handler(req, res) {
   if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   const results = {
-    redditPostsFound: 0,
-    hypemTracksFound: 0,
-    lastfmTracksFound: 0,
+    appleMusicTracksFound: 0,
+    deezerTracksFound: 0,
+    pitchforkTracksFound: 0,
     candidatesBeforeMatch: 0,
     spotifyMatched: 0,
     newTracksIngested: 0,
@@ -39,56 +28,44 @@ export default async function handler(req, res) {
 
   try {
     // ── Step 1: Fetch all sources in parallel ─────────────────────────────────
-    const [redditResult, hypemResult, lastfmResult] = await Promise.allSettled([
-      fetchRedditTracks(),
-      fetchHypemTracks(3),
-      fetchLastfmTracks(process.env.LASTFM_API_KEY),
+    const [appleResult, deezerResult, pitchforkResult] = await Promise.allSettled([
+      fetchAppleMusicTracks(),
+      fetchDeezerTracks(),
+      fetchPitchforkTracks(),
     ]);
 
-    const redditPosts = redditResult.status === "fulfilled" ? redditResult.value.posts : [];
-    const hypemTracks = hypemResult.status === "fulfilled" ? hypemResult.value.tracks : [];
-    const lastfmTracks = lastfmResult.status === "fulfilled" ? lastfmResult.value.tracks : [];
+    const appleTracks    = appleResult.status    === "fulfilled" ? appleResult.value.tracks    : [];
+    const deezerTracks   = deezerResult.status   === "fulfilled" ? deezerResult.value.tracks   : [];
+    const pitchforkTracks = pitchforkResult.status === "fulfilled" ? pitchforkResult.value.tracks : [];
 
-    if (redditResult.status === "rejected") results.errors.push({ step: "reddit", error: redditResult.reason?.message });
-    if (hypemResult.status === "rejected") results.errors.push({ step: "hypem", error: hypemResult.reason?.message });
-    if (lastfmResult.status === "rejected") results.errors.push({ step: "lastfm", error: lastfmResult.reason?.message });
+    if (appleResult.status    === "rejected") results.errors.push({ step: "apple",     error: appleResult.reason?.message });
+    if (deezerResult.status   === "rejected") results.errors.push({ step: "deezer",    error: deezerResult.reason?.message });
+    if (pitchforkResult.status === "rejected") results.errors.push({ step: "pitchfork", error: pitchforkResult.reason?.message });
 
-    // Surface internal per-source errors (e.g. individual subreddit/page failures)
     const sourceErrors = [
-      ...(redditResult.value?.errors || []).map(e => ({ source: "reddit", ...e })),
-      ...(hypemResult.value?.errors || []).map(e => ({ source: "hypem", ...e })),
-      ...(lastfmResult.value?.errors || []).map(e => ({ source: "lastfm", ...e })),
+      ...(appleResult.value?.errors    || []).map(e => ({ source: "apple",     ...e })),
+      ...(deezerResult.value?.errors   || []).map(e => ({ source: "deezer",    ...e })),
+      ...(pitchforkResult.value?.errors || []).map(e => ({ source: "pitchfork", ...e })),
     ];
     if (sourceErrors.length) results.sourceErrors = sourceErrors;
 
-    results.redditPostsFound = redditPosts.length;
-    results.hypemTracksFound = hypemTracks.length;
-    results.lastfmTracksFound = lastfmTracks.length;
+    results.appleMusicTracksFound = appleTracks.length;
+    results.deezerTracksFound     = deezerTracks.length;
+    results.pitchforkTracksFound  = pitchforkTracks.length;
 
     // ── Step 2: Merge and deduplicate by artist+title ─────────────────────────
-    // Map of normalised key → { artist, title, scores[] }
     const candidateMap = new Map();
-
     const key = (artist, title) =>
       `${artist.toLowerCase().trim()}|||${title.toLowerCase().trim()}`;
 
-    for (const p of redditPosts) {
-      const k = key(p.artist, p.title);
-      if (!candidateMap.has(k)) candidateMap.set(k, { artist: p.artist, title: p.title, scores: [] });
-      candidateMap.get(k).scores.push(redditScore(p.upvotes));
-    }
-    for (const t of hypemTracks) {
-      const k = key(t.artist, t.title);
-      if (!candidateMap.has(k)) candidateMap.set(k, { artist: t.artist, title: t.title, scores: [] });
-      candidateMap.get(k).scores.push(hypemScore(t.loved_count, t.posted_count));
-    }
-    for (const t of lastfmTracks) {
-      const k = key(t.artist, t.title);
-      if (!candidateMap.has(k)) candidateMap.set(k, { artist: t.artist, title: t.title, scores: [] });
-      candidateMap.get(k).scores.push(lastfmScore(t.listeners));
+    for (const source of [appleTracks, deezerTracks, pitchforkTracks]) {
+      for (const t of source) {
+        const k = key(t.artist, t.title);
+        if (!candidateMap.has(k)) candidateMap.set(k, { artist: t.artist, title: t.title, scores: [] });
+        candidateMap.get(k).scores.push(t.chartScore);
+      }
     }
 
-    // Average available scores → final buzz score
     const candidates = [...candidateMap.values()].map((c) => ({
       ...c,
       buzzScore: Math.round(c.scores.reduce((a, b) => a + b, 0) / c.scores.length),
