@@ -53,6 +53,14 @@ export default async function handler(req, res) {
     if (hypemResult.status === "rejected") results.errors.push({ step: "hypem", error: hypemResult.reason?.message });
     if (lastfmResult.status === "rejected") results.errors.push({ step: "lastfm", error: lastfmResult.reason?.message });
 
+    // Surface internal per-source errors (e.g. individual subreddit/page failures)
+    const sourceErrors = [
+      ...(redditResult.value?.errors || []).map(e => ({ source: "reddit", ...e })),
+      ...(hypemResult.value?.errors || []).map(e => ({ source: "hypem", ...e })),
+      ...(lastfmResult.value?.errors || []).map(e => ({ source: "lastfm", ...e })),
+    ];
+    if (sourceErrors.length) results.sourceErrors = sourceErrors;
+
     results.redditPostsFound = redditPosts.length;
     results.hypemTracksFound = hypemTracks.length;
     results.lastfmTracksFound = lastfmTracks.length;

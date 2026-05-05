@@ -53,6 +53,7 @@ export default function Admin() {
   const [searchResult, setSearchResult] = useState(null);
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+  const [spotifyAuthUrl, setSpotifyAuthUrl] = useState(null);
 
   useEffect(() => {
     try {
@@ -96,6 +97,14 @@ export default function Admin() {
       const r = await fetch("/api/admin/test-search", { headers: { Authorization: `Bearer ${secret}` } });
       setSearchResult({ ok: r.ok, data: await r.json() });
     } catch (e) { setSearchResult({ ok: false, data: { error: e.message } }); }
+  };
+
+  const handleSpotifyAuth = async () => {
+    try {
+      const r = await fetch("/api/admin/spotify-auth", { headers: { Authorization: `Bearer ${secret}` } });
+      const d = await r.json();
+      if (d.authUrl) setSpotifyAuthUrl(d.authUrl);
+    } catch {}
   };
 
   const handleSyncPlaylist = async () => {
@@ -178,6 +187,27 @@ export default function Admin() {
                   </div>
                 )}
               </>
+            )}
+          </div>
+
+          {/* Spotify OAuth */}
+          <div style={card}>
+            {label9("// Spotify")}
+            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
+              Required for playlist sync. Click to get an auth URL, then open it to grant playlist permissions.
+            </p>
+            <button
+              onClick={handleSpotifyAuth} disabled={!secret}
+              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--text)" }), opacity: !secret ? 0.5 : 1 }}
+            >
+              Connect Spotify Account
+            </button>
+            {spotifyAuthUrl && (
+              <div style={{ marginTop: 10, fontSize: 10, wordBreak: "break-all" }}>
+                <a href={spotifyAuthUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
+                  Open this URL to authorize →
+                </a>
+              </div>
             )}
           </div>
 
