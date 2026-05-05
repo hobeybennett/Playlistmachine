@@ -415,7 +415,7 @@ export default function Home() {
           position: "relative", zIndex: 1,
         }}>
           <span>PLAYLIST MACHINE</span>
-          <span>Ranking: 50% popularity · 35% growth · 15% votes</span>
+          <span>Ranking: 50% buzz · 30% recency · 20% votes</span>
           <span>Indie · updated every 6h</span>
         </footer>
       </div>
