@@ -202,7 +202,7 @@ function TrackRow({ track, rank }) {
           {Math.round(track.final_score)}
         </div>
         <div style={{ fontSize: 10, color: "var(--faint)", marginTop: 3 }}>
-          pop {track.popularity}
+          {track.release_date ? `${Math.max(0, Math.floor((Date.now() - new Date(track.release_date)) / 86400000))}d old` : ""}
         </div>
       </div>
 
