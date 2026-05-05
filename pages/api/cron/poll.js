@@ -1,25 +1,30 @@
-import { searchTracks } from "../../../lib/spotify.js";
+import { searchTracks, fetchTracksFull } from "../../../lib/spotify.js";
 import { ingestTrackObjects, refreshTrackPopularities, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
 
-// Spotify search supported filters: year:, tag:new, tag:hipster, artist:, track:
-// genre: is NOT a supported filter — returns 0-popularity garbage.
-// tag:new = tracks released in the last 2 weeks (most likely to have real popularity).
+// Only year: filter works reliably in dev-mode Spotify. genre: and tag:new return nothing.
+// Popularity is absent from search results — we batch-fetch via GET /tracks after ingesting.
 const SEARCH_QUERIES = [
-  { q: "tag:new" },
-  { q: "tag:new", offset: 10 },
-  { q: "tag:new", offset: 20 },
-  { q: "tag:new", offset: 30 },
-  { q: "tag:new", offset: 40 },
-  { q: "tag:new", offset: 50 },
   { q: "year:2026" },
   { q: "year:2026", offset: 10 },
   { q: "year:2026", offset: 20 },
   { q: "year:2026", offset: 30 },
   { q: "year:2026", offset: 40 },
+  { q: "year:2026", offset: 50 },
+  { q: "year:2026", offset: 60 },
+  { q: "year:2026", offset: 70 },
+  { q: "year:2026", offset: 80 },
+  { q: "year:2026", offset: 90 },
   { q: "year:2025" },
   { q: "year:2025", offset: 10 },
   { q: "year:2025", offset: 20 },
+  { q: "year:2025", offset: 30 },
+  { q: "year:2025", offset: 40 },
+  { q: "year:2025", offset: 50 },
+  { q: "year:2025", offset: 60 },
+  { q: "year:2025", offset: 70 },
+  { q: "year:2025", offset: 80 },
+  { q: "year:2025", offset: 90 },
 ];
 
 export default async function handler(req, res) {
@@ -65,14 +70,29 @@ export default async function handler(req, res) {
     }
 
     results.tracksFound = allTracks.length;
-    results.popularitySample = allTracks
-      .filter((t) => t.popularity > 0)
-      .slice(0, 5)
-      .map((t) => ({ name: t.name, artist: t.artists?.[0]?.name, popularity: t.popularity }));
 
-    // ── Step 2: Ingest all (chart ranking handles sorting by popularity) ───────
+    // ── Step 2: Batch-fetch full track objects to get popularity ──────────────
+    // Search omits popularity for dev-mode apps; GET /tracks returns the full object.
+    let tracksToIngest = allTracks;
     try {
-      results.newTracksIngested = await ingestTrackObjects(allTracks);
+      const ids = allTracks.map((t) => t.id);
+      const full = await fetchTracksFull(ids);
+      if (Object.keys(full).length > 0) {
+        // Merge popularity back onto track objects; fall back to search object if missing
+        tracksToIngest = allTracks.map((t) => full[t.id] || t);
+      }
+      results.popularitySample = tracksToIngest
+        .filter((t) => (t.popularity || 0) > 0)
+        .slice(0, 5)
+        .map((t) => ({ name: t.name, artist: t.artists?.[0]?.name, popularity: t.popularity }));
+      results.batchFetchCount = Object.keys(full).length;
+    } catch (err) {
+      results.errors.push({ step: "batch-fetch", error: err.message });
+    }
+
+    // ── Step 3: Ingest ────────────────────────────────────────────────────────
+    try {
+      results.newTracksIngested = await ingestTrackObjects(tracksToIngest);
     } catch (err) {
       results.errors.push({ step: "ingest", error: err.message });
     }
