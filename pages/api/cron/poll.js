@@ -1,6 +1,6 @@
 import { fetchAppleMusicTracks } from "../../../lib/sources/applemusic.js";
 import { fetchDeezerTracks } from "../../../lib/sources/deezer.js";
-import { fetchPitchforkTracks } from "../../../lib/sources/pitchfork.js";
+import { fetchBlogTracks } from "../../../lib/sources/blogs.js";
 import { searchTracks, getSpotifyUserId, createPlaylist, updatePlaylist } from "../../../lib/spotify.js";
 import { ingestTrackObjects, takeDailySnapshots } from "../../../lib/ingestion.js";
 import { recomputeAllTrackScores } from "../../../lib/ranking.js";
@@ -16,7 +16,8 @@ export default async function handler(req, res) {
   const results = {
     appleMusicTracksFound: 0,
     deezerTracksFound: 0,
-    pitchforkTracksFound: 0,
+    blogTracksFound: 0,
+    blogsChecked: 0,
     candidatesBeforeMatch: 0,
     spotifyMatched: 0,
     newTracksIngested: 0,
@@ -28,37 +29,38 @@ export default async function handler(req, res) {
 
   try {
     // ── Step 1: Fetch all sources in parallel ─────────────────────────────────
-    const [appleResult, deezerResult, pitchforkResult] = await Promise.allSettled([
+    const [appleResult, deezerResult, blogResult] = await Promise.allSettled([
       fetchAppleMusicTracks(),
       fetchDeezerTracks(),
-      fetchPitchforkTracks(),
+      fetchBlogTracks(),
     ]);
 
-    const appleTracks    = appleResult.status    === "fulfilled" ? appleResult.value.tracks    : [];
-    const deezerTracks   = deezerResult.status   === "fulfilled" ? deezerResult.value.tracks   : [];
-    const pitchforkTracks = pitchforkResult.status === "fulfilled" ? pitchforkResult.value.tracks : [];
+    const appleTracks = appleResult.status === "fulfilled" ? appleResult.value.tracks : [];
+    const deezerTracks = deezerResult.status === "fulfilled" ? deezerResult.value.tracks : [];
+    const blogTracks  = blogResult.status  === "fulfilled" ? blogResult.value.tracks  : [];
 
-    if (appleResult.status    === "rejected") results.errors.push({ step: "apple",     error: appleResult.reason?.message });
-    if (deezerResult.status   === "rejected") results.errors.push({ step: "deezer",    error: deezerResult.reason?.message });
-    if (pitchforkResult.status === "rejected") results.errors.push({ step: "pitchfork", error: pitchforkResult.reason?.message });
+    if (appleResult.status === "rejected") results.errors.push({ step: "apple",  error: appleResult.reason?.message });
+    if (deezerResult.status === "rejected") results.errors.push({ step: "deezer", error: deezerResult.reason?.message });
+    if (blogResult.status  === "rejected") results.errors.push({ step: "blogs",  error: blogResult.reason?.message });
 
     const sourceErrors = [
-      ...(appleResult.value?.errors    || []).map(e => ({ source: "apple",     ...e })),
-      ...(deezerResult.value?.errors   || []).map(e => ({ source: "deezer",    ...e })),
-      ...(pitchforkResult.value?.errors || []).map(e => ({ source: "pitchfork", ...e })),
+      ...(appleResult.value?.errors  || []).map(e => ({ source: "apple",  ...e })),
+      ...(deezerResult.value?.errors || []).map(e => ({ source: "deezer", ...e })),
+      ...(blogResult.value?.errors   || []).map(e => ({ source: "blogs",  ...e })),
     ];
     if (sourceErrors.length) results.sourceErrors = sourceErrors;
 
     results.appleMusicTracksFound = appleTracks.length;
     results.deezerTracksFound     = deezerTracks.length;
-    results.pitchforkTracksFound  = pitchforkTracks.length;
+    results.blogTracksFound       = blogTracks.length;
+    results.blogsChecked          = blogResult.value?.blogsChecked ?? 0;
 
     // ── Step 2: Merge and deduplicate by artist+title ─────────────────────────
     const candidateMap = new Map();
     const key = (artist, title) =>
       `${artist.toLowerCase().trim()}|||${title.toLowerCase().trim()}`;
 
-    for (const source of [appleTracks, deezerTracks, pitchforkTracks]) {
+    for (const source of [appleTracks, deezerTracks, blogTracks]) {
       for (const t of source) {
         const k = key(t.artist, t.title);
         if (!candidateMap.has(k)) candidateMap.set(k, { artist: t.artist, title: t.title, scores: [] });
