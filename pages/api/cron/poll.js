@@ -13,7 +13,9 @@ export default async function handler(req, res) {
 
   const results = {
     blogsChecked: 0,
+    listSource: null,
     blogTracksFound: 0,
+    blogStats: [],
     candidatesBeforeMatch: 0,
     spotifyMatched: 0,
     newTracksIngested: 0,
@@ -34,8 +36,10 @@ export default async function handler(req, res) {
     }
 
     if (blogResult.errors?.length) results.sourceErrors = blogResult.errors;
-    results.blogsChecked   = blogResult.blogsChecked ?? 0;
+    results.blogsChecked    = blogResult.blogsChecked ?? 0;
+    results.listSource      = blogResult.listSource ?? null;
     results.blogTracksFound = blogResult.tracks.length;
+    results.blogStats       = blogResult.blogStats ?? [];
 
     // ── Step 2: Deduplicate candidates (already done inside fetchBlogTracks) ──
     const candidates = blogResult.tracks;
