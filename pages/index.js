@@ -187,7 +187,8 @@ function TrackRow({ track, rank }) {
         <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {track.artists}
         </div>
-        <div style={{ marginTop: 4, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ marginTop: 4, display: "flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
+          {(track.genres || []).map((g) => <GenreBadge key={g} genre={g} />)}
           {track.first_seen && (
             <span style={{ fontSize: 11, color: "var(--faint)" }}>
               Added {daysAgo(track.first_seen)}
@@ -253,24 +254,29 @@ function Pagination({ page, totalPages, onPage }) {
   );
 }
 
+const GENRES = ["rock", "pop", "alternative", "rap", "electronic", "dance", "metal", "punk", "hardcore"];
+
 export default function Home() {
   const router = useRouter();
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [meta, setMeta] = useState({ total: 0, totalPages: 1 });
+  const [meta, setMeta] = useState({ total: 0, totalPages: 1, genreCounts: {} });
+  const [genre, setGenre] = useState(null);
 
   const page = Math.max(1, parseInt(router.query.page || "1", 10));
 
-  const loadChart = useCallback(async (p) => {
+  const loadChart = useCallback(async (p, g) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/charts?page=${p}`);
+      const params = new URLSearchParams({ page: p });
+      if (g) params.set("genre", g);
+      const res = await fetch(`/api/charts?${params}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to load chart");
       setTracks(data.tracks);
-      setMeta({ total: data.total, totalPages: data.totalPages });
+      setMeta({ total: data.total, totalPages: data.totalPages, genreCounts: data.genreCounts || {} });
     } catch (e) {
       setError(e.message);
       setTracks([]);
@@ -280,12 +286,17 @@ export default function Home() {
 
   useEffect(() => {
     if (!router.isReady) return;
-    loadChart(page);
-  }, [page, router.isReady, loadChart]);
+    loadChart(page, genre);
+  }, [page, genre, router.isReady, loadChart]);
 
   const navigate = (newPage) => {
     const query = newPage > 1 ? { page: newPage } : {};
     router.push({ pathname: "/", query }, undefined, { shallow: true });
+  };
+
+  const selectGenre = (g) => {
+    setGenre(g);
+    router.push({ pathname: "/" }, undefined, { shallow: true });
   };
 
   return (
@@ -333,23 +344,38 @@ export default function Home() {
         </nav>
 
         <div style={{ position: "relative", zIndex: 1 }}>
-          {/* Chart header */}
+          {/* Genre tabs */}
           <div style={{
-            display: "flex", alignItems: "center",
+            display: "flex", alignItems: "center", gap: 2,
             borderBottom: "1px solid var(--border)",
             background: "var(--surface)",
-            padding: "0 16px", height: 38,
+            padding: "0 12px",
             position: "sticky", top: 54, zIndex: 99,
+            overflowX: "auto", scrollbarWidth: "none",
           }}>
-            <span style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--accent)" }}>
-              Emerging Indie
-            </span>
-            <div style={{ flex: 1 }} />
-            {meta.total > 0 && (
-              <span style={{ fontSize: 9, color: "var(--faint)" }}>
-                {meta.total} tracks
-              </span>
-            )}
+            {[null, ...GENRES].map((g) => {
+              const active = genre === g;
+              const count = g ? meta.genreCounts[g] : meta.total;
+              return (
+                <button
+                  key={g ?? "all"}
+                  onClick={() => selectGenre(g)}
+                  style={{
+                    flexShrink: 0,
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: "10px 10px 8px",
+                    fontSize: 10, fontWeight: active ? 700 : 400,
+                    letterSpacing: "0.08em", textTransform: "uppercase",
+                    color: active ? "var(--accent)" : "var(--muted)",
+                    borderBottom: `2px solid ${active ? "var(--accent)" : "transparent"}`,
+                    transition: "color 0.15s",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {g ?? "All"}{count > 0 ? ` ${count}` : ""}
+                </button>
+              );
+            })}
           </div>
 
           {/* Error */}
