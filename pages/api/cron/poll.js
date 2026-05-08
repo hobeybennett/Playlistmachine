@@ -1,5 +1,3 @@
-import { fetchAppleMusicTracks } from "../../../lib/sources/applemusic.js";
-import { fetchDeezerTracks } from "../../../lib/sources/deezer.js";
 import { fetchBlogTracks } from "../../../lib/sources/blogs.js";
 import { searchTracks, getSpotifyUserId, createPlaylist, updatePlaylist } from "../../../lib/spotify.js";
 import { ingestTrackObjects, takeDailySnapshots } from "../../../lib/ingestion.js";
@@ -14,10 +12,8 @@ export default async function handler(req, res) {
   }
 
   const results = {
-    appleMusicTracksFound: 0,
-    deezerTracksFound: 0,
-    blogTracksFound: 0,
     blogsChecked: 0,
+    blogTracksFound: 0,
     candidatesBeforeMatch: 0,
     spotifyMatched: 0,
     newTracksIngested: 0,
@@ -28,54 +24,24 @@ export default async function handler(req, res) {
   };
 
   try {
-    // ── Step 1: Fetch all sources in parallel ─────────────────────────────────
-    const [appleResult, deezerResult, blogResult] = await Promise.allSettled([
-      fetchAppleMusicTracks(),
-      fetchDeezerTracks(),
-      fetchBlogTracks(),
-    ]);
-
-    const appleTracks = appleResult.status === "fulfilled" ? appleResult.value.tracks : [];
-    const deezerTracks = deezerResult.status === "fulfilled" ? deezerResult.value.tracks : [];
-    const blogTracks  = blogResult.status  === "fulfilled" ? blogResult.value.tracks  : [];
-
-    if (appleResult.status === "rejected") results.errors.push({ step: "apple",  error: appleResult.reason?.message });
-    if (deezerResult.status === "rejected") results.errors.push({ step: "deezer", error: deezerResult.reason?.message });
-    if (blogResult.status  === "rejected") results.errors.push({ step: "blogs",  error: blogResult.reason?.message });
-
-    const sourceErrors = [
-      ...(appleResult.value?.errors  || []).map(e => ({ source: "apple",  ...e })),
-      ...(deezerResult.value?.errors || []).map(e => ({ source: "deezer", ...e })),
-      ...(blogResult.value?.errors   || []).map(e => ({ source: "blogs",  ...e })),
-    ];
-    if (sourceErrors.length) results.sourceErrors = sourceErrors;
-
-    results.appleMusicTracksFound = appleTracks.length;
-    results.deezerTracksFound     = deezerTracks.length;
-    results.blogTracksFound       = blogTracks.length;
-    results.blogsChecked          = blogResult.value?.blogsChecked ?? 0;
-
-    // ── Step 2: Merge and deduplicate by artist+title ─────────────────────────
-    const candidateMap = new Map();
-    const key = (artist, title) =>
-      `${artist.toLowerCase().trim()}|||${title.toLowerCase().trim()}`;
-
-    for (const source of [appleTracks, deezerTracks, blogTracks]) {
-      for (const t of source) {
-        const k = key(t.artist, t.title);
-        if (!candidateMap.has(k)) candidateMap.set(k, { artist: t.artist, title: t.title, scores: [] });
-        candidateMap.get(k).scores.push(t.chartScore);
-      }
+    // ── Step 1: Fetch blog tracks ─────────────────────────────────────────────
+    let blogResult;
+    try {
+      blogResult = await fetchBlogTracks();
+    } catch (err) {
+      results.errors.push({ step: "blogs", error: err.message });
+      blogResult = { tracks: [], errors: [], blogsChecked: 0 };
     }
 
-    const candidates = [...candidateMap.values()].map((c) => ({
-      ...c,
-      buzzScore: Math.round(c.scores.reduce((a, b) => a + b, 0) / c.scores.length),
-    }));
+    if (blogResult.errors?.length) results.sourceErrors = blogResult.errors;
+    results.blogsChecked   = blogResult.blogsChecked ?? 0;
+    results.blogTracksFound = blogResult.tracks.length;
 
+    // ── Step 2: Deduplicate candidates (already done inside fetchBlogTracks) ──
+    const candidates = blogResult.tracks;
     results.candidatesBeforeMatch = candidates.length;
 
-    // ── Step 3: Spotify-match each candidate (serial — throttle handles rate) ─
+    // ── Step 3: Spotify-match each candidate ─────────────────────────────────
     const seen = new Set();
     const tracksToIngest = [];
 
@@ -93,7 +59,7 @@ export default async function handler(req, res) {
       const track = tracks[0];
       if (seen.has(track.id)) continue;
       seen.add(track.id);
-      track.popularity = candidate.buzzScore;
+      track.popularity = candidate.chartScore;
       tracksToIngest.push(track);
     }
 
