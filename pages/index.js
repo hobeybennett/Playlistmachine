@@ -310,7 +310,7 @@ export default function Home() {
           position: "sticky", top: 0, zIndex: 100,
           background: "rgba(9,9,11,0.97)", backdropFilter: "blur(12px)",
           borderBottom: "1px solid var(--border)",
-          display: "flex", alignItems: "center", gap: 24,
+          display: "flex", alignItems: "center", gap: 16,
           padding: "0 16px", height: 54,
         }}>
           <Link href="/" style={{ display: "flex", alignItems: "center", gap: 9, flexShrink: 0, textDecoration: "none" }}>
@@ -320,16 +320,9 @@ export default function Home() {
             </span>
           </Link>
           <div style={{ flex: 1 }} />
-          <Link href="/curators" style={{ fontSize: 10, color: "var(--muted)", letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
-            Curators
-          </Link>
           <Link href="/admin" style={{ fontSize: 10, color: "var(--faint)", letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
             Admin
           </Link>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 9, color: "var(--hot)", flexShrink: 0 }}>
-            <div style={{ width: 5, height: 5, borderRadius: "50%", background: "var(--hot)" }} />
-            LIVE
-          </div>
         </nav>
 
         <div style={{ position: "relative", zIndex: 1 }}>
