@@ -45,7 +45,6 @@ function ResultBox({ result }) {
 export default function Admin() {
   const [secret, setSecret] = useState("");
   const [stats, setStats] = useState(null);
-  const [toast, setToast] = useState(null);
   const [pollRunning, setPollRunning] = useState(false);
   const [pollResult, setPollResult] = useState(null);
   const [nukeRunning, setNukeRunning] = useState(false);
@@ -69,8 +68,6 @@ export default function Admin() {
       if (r.ok) setStats(await r.json());
     } catch {}
   };
-
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(null), 2000); };
 
   const handlePoll = async () => {
     setPollRunning(true); setPollResult(null);
@@ -111,22 +108,18 @@ export default function Admin() {
     setSyncRunning(true); setSyncResult(null);
     try {
       const r = await fetch("/api/admin/sync-playlist", { method: "POST", headers: { Authorization: `Bearer ${secret}` } });
-      setSyncResult({ ok: r.ok, data: await r.json() });
+      const data = await r.json();
+      setSyncResult({ ok: r.ok, data });
+      if (r.ok && data.playlistId) loadStats();
     } catch (e) { setSyncResult({ ok: false, data: { error: e.message } }); }
-    setSyncRunning(false); loadStats();
+    setSyncRunning(false);
   };
+
+  const playlistId = syncResult?.data?.playlistId || stats?.chartPlaylistId;
 
   return (
     <>
       <Head><title>Admin — Playlist Machine</title></Head>
-
-      {toast && (
-        <div style={{
-          position: "fixed", bottom: 24, right: 24, zIndex: 9999,
-          background: "var(--accent)", color: "#000",
-          padding: "10px 20px", borderRadius: 4, fontSize: 12, fontWeight: 700,
-        }}>{toast}</div>
-      )}
 
       <div style={{ minHeight: "100vh" }}>
         <nav style={{
@@ -161,61 +154,73 @@ export default function Admin() {
               }}
             />
             {stats && (
-              <>
-                <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {[
-                    ["Total Tracks", stats.tracks?.total ?? "—"],
-                    ["With Popularity", stats.withPop?.total ?? "—"],
-                    ["Avg Popularity", stats.withPop?.avg_pop ?? "—"],
-                  ].map(([l, v]) => (
-                    <div key={l} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 0", textAlign: "center" }}>
-                      <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{v}</div>
-                      <div style={{ fontSize: 8, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-                {stats.chartPlaylistId && (
-                  <div style={{ marginTop: 10, fontSize: 10, color: "var(--muted)" }}>
-                    Chart playlist:{" "}
-                    <a
-                      href={`https://open.spotify.com/playlist/${stats.chartPlaylistId}`}
-                      target="_blank" rel="noopener noreferrer"
-                      style={{ color: "var(--accent)" }}
-                    >
-                      open.spotify.com/playlist/{stats.chartPlaylistId}
-                    </a>
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {[
+                  ["Total Tracks", stats.tracks?.total ?? "—"],
+                  ["With Buzz Score", stats.withPop?.total ?? "—"],
+                  ["Avg Score", stats.withPop?.avg_pop ?? "—"],
+                ].map(([l, v]) => (
+                  <div key={l} style={{ background: "var(--surface2)", borderRadius: 3, padding: "10px 0", textAlign: "center" }}>
+                    <div style={{ fontFamily: "Georgia, serif", fontSize: 22, fontWeight: 700, color: "var(--accent)" }}>{v}</div>
+                    <div style={{ fontSize: 8, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.05em", marginTop: 2 }}>{l}</div>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Spotify OAuth */}
-          <div style={card}>
-            {label9("// Spotify")}
-            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
-              Required for playlist sync. Click to get an auth URL, then open it to grant playlist permissions.
-            </p>
-            <button
-              onClick={handleSpotifyAuth} disabled={!secret}
-              style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--text)" }), opacity: !secret ? 0.5 : 1 }}
-            >
-              Connect Spotify Account
-            </button>
-            {spotifyAuthUrl && (
-              <div style={{ marginTop: 10, fontSize: 10, wordBreak: "break-all" }}>
-                <a href={spotifyAuthUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--accent)" }}>
-                  Open this URL to authorize →
-                </a>
+                ))}
               </div>
             )}
           </div>
 
-          {/* Main actions */}
+          {/* Export to Spotify */}
+          <div style={card}>
+            {label9("// Export to Spotify")}
+
+            {playlistId ? (
+              <a
+                href={`https://open.spotify.com/playlist/${playlistId}`}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  background: "rgba(30,215,96,0.08)", border: "1px solid rgba(30,215,96,0.3)",
+                  borderRadius: 3, padding: "10px 14px", marginBottom: 12,
+                  textDecoration: "none",
+                }}
+              >
+                <span style={{ fontSize: 11, color: "#1ed760", fontWeight: 600 }}>♫ Chart Playlist on Spotify</span>
+                <span style={{ fontSize: 9, color: "rgba(30,215,96,0.6)" }}>Open →</span>
+              </a>
+            ) : (
+              <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 12px", lineHeight: 1.6 }}>
+                Step 1: Connect your Spotify account. Step 2: Sync pushes the top 50 chart tracks to a playlist.
+              </p>
+            )}
+
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={handleSpotifyAuth} disabled={!secret}
+                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)", fontSize: 10 }), opacity: !secret ? 0.5 : 1, flex: 1 }}
+              >
+                {spotifyAuthUrl ? "Refresh Auth URL" : "1. Connect Spotify"}
+              </button>
+              <button
+                onClick={handleSyncPlaylist} disabled={!secret || syncRunning}
+                style={{ ...btn({ background: "rgba(30,215,96,0.12)", border: "1px solid rgba(30,215,96,0.4)", color: "#1ed760", fontSize: 10 }), opacity: (!secret || syncRunning) ? 0.5 : 1, flex: 1 }}
+              >
+                {syncRunning ? "Syncing…" : "2. Sync Playlist"}
+              </button>
+            </div>
+
+            {spotifyAuthUrl && (
+              <a href={spotifyAuthUrl} target="_blank" rel="noopener noreferrer"
+                style={{ display: "block", marginTop: 10, fontSize: 10, color: "var(--accent)", wordBreak: "break-all" }}>
+                → Open this URL in your browser to authorise
+              </a>
+            )}
+            {syncResult && <ResultBox result={syncResult} />}
+          </div>
+
+          {/* Actions */}
           <div style={card}>
             {label9("// Actions")}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
               <button
                 onClick={handlePoll} disabled={!secret || pollRunning}
                 style={{ ...btn({ background: "var(--accent)", color: "#000", padding: "14px 16px", fontSize: 13 }), opacity: (!secret || pollRunning) ? 0.6 : 1 }}
@@ -223,14 +228,6 @@ export default function Admin() {
                 {pollRunning ? "Polling…" : "⚡ Trigger Poll"}
               </button>
               {pollResult && <ResultBox result={pollResult} />}
-
-              <button
-                onClick={handleSyncPlaylist} disabled={!secret || syncRunning}
-                style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--text)" }), opacity: (!secret || syncRunning) ? 0.5 : 1 }}
-              >
-                {syncRunning ? "Syncing…" : "♫ Sync Spotify Playlist"}
-              </button>
-              {syncResult && <ResultBox result={syncResult} />}
 
               <button
                 onClick={handleNuke} disabled={!secret || nukeRunning}
@@ -245,9 +242,6 @@ export default function Admin() {
           {/* Diagnostics */}
           <div style={card}>
             {label9("// Diagnostics")}
-            <p style={{ fontSize: 11, color: "var(--muted)", margin: "0 0 10px", lineHeight: 1.6 }}>
-              Shows full raw Spotify track object including all fields returned by the search API.
-            </p>
             <button
               onClick={handleSearchTest} disabled={!secret}
               style={{ ...btn({ background: "var(--surface2)", border: "1px solid var(--border2)", color: "var(--muted)" }), opacity: !secret ? 0.5 : 1 }}
